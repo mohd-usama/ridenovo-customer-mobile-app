@@ -24,7 +24,7 @@ class RidonovaApp extends StatelessWidget {
     return SafeArea(
       top: false,
       child: MaterialApp(
-        title: 'Ridonova - Ride Booking Platform',
+        title: 'Ridonova - Customer app',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const SplashScreen(),
