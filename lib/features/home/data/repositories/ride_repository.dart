@@ -27,6 +27,7 @@ abstract class RideRepository {
   Future<ApiResponse<String>> getRideOtp(String rideId);
   Future<ApiResponse<Map<String, dynamic>>> getCancelPreview(String rideId);
   Future<ApiResponse<bool>> cancelRideWithReason(String rideId, CancelRideRequest request);
+  Future<ApiResponse<RideHistoryResponse>> getRideHistory({String type = 'all', int page = 1, int limit = 10});
 
   // Saved Addresses APIs
   Future<ApiResponse<List<SavedAddressModel>>> getSavedAddresses();
@@ -262,10 +263,24 @@ class RideRepositoryImpl implements RideRepository {
 
   @override
   Future<ApiResponse<bool>> cancelRideWithReason(String rideId, CancelRideRequest request) async {
-    return await apiService.post<bool>(
+    print('🚀 [API Call] POST ${ApiEndpoints.riderCancelRide(rideId)} with body: ${request.toJson()}');
+    final response = await apiService.post<bool>(
       ApiEndpoints.riderCancelRide(rideId),
       data: request.toJson(),
       fromJson: (json) => json['success'] ?? true,
+    );
+    print('🚀 [API Call Result] cancelRideWithReason success: ${response.isSuccess}, data: ${response.data}');
+    return response;
+  }
+
+  @override
+  Future<ApiResponse<RideHistoryResponse>> getRideHistory({String type = 'all', int page = 1, int limit = 10}) async {
+    return await apiService.get<RideHistoryResponse>(
+      ApiEndpoints.riderRidesHistory,
+      queryParameters: {'type': type, 'page': page, 'limit': limit},
+      fromJson: (json) {
+        return RideHistoryResponse.fromJson(json is Map<String, dynamic> ? json : {});
+      },
     );
   }
 }

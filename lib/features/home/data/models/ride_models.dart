@@ -1,3 +1,5 @@
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import '../../providers/ride_provider.dart';
 
 /// Request model for location autocomplete/search API
@@ -8,7 +10,11 @@ class SearchLocationRequest {
 
   SearchLocationRequest({required this.query, this.latitude, this.longitude});
 
-  Map<String, dynamic> toJson() => {'input': query, if (latitude != null) 'latitude': latitude, if (longitude != null) 'longitude': longitude};
+  Map<String, dynamic> toJson() => {
+    'input': query,
+    if (latitude != null) 'latitude': latitude,
+    if (longitude != null) 'longitude': longitude,
+  };
 }
 
 /// Model for location autocomplete suggestions
@@ -205,6 +211,7 @@ class RideModel {
   final double fare;
   final String? otp;
   final CaptainModel? captain;
+  final List<LatLng> routePoints;
   final String? createdAt;
 
   RideModel({
@@ -220,24 +227,31 @@ class RideModel {
     required this.fare,
     this.otp,
     this.captain,
+    this.routePoints = const [],
     this.createdAt,
   });
 
   factory RideModel.fromJson(Map<String, dynamic> json) {
     final map = json['ride'] is Map<String, dynamic> ? json['ride'] as Map<String, dynamic> : json;
 
-    final statusStr = map['status']?.toString().toLowerCase() ?? 'searching';
+    final statusStr = map['status']?.toString().toLowerCase() ?? '';
     RideStatus parsedStatus = RideStatus.searching;
     if (statusStr.contains('accept')) {
       parsedStatus = RideStatus.accepted;
     } else if (statusStr.contains('arrive')) {
       parsedStatus = RideStatus.arrived;
-    } else if (statusStr.contains('progress') || statusStr.contains('ongoing')) {
+    } else if (statusStr.contains('progress') || statusStr.contains('ongoing') || statusStr.contains('start')) {
       parsedStatus = RideStatus.inProgress;
-    } else if (statusStr.contains('complete')) {
+    } else if (statusStr.contains('complete') ||
+        statusStr.contains('finish') ||
+        statusStr.contains('end') ||
+        statusStr.contains('success') ||
+        statusStr.contains('close')) {
       parsedStatus = RideStatus.completed;
     } else if (statusStr.contains('cancel')) {
       parsedStatus = RideStatus.cancelled;
+    } else if (statusStr.isEmpty) {
+      parsedStatus = RideStatus.completed;
     }
 
     final typeStr = (map['vehicle_type'] ?? map['rideType'])?.toString().toLowerCase() ?? 'bike';
@@ -252,17 +266,42 @@ class RideModel {
       parsedType = RideType.cab;
     }
 
-    final pickupObj = map['pickup_address'];
+    final pickupObj = map['pickup_address'] ?? map['pickup'];
     final pickupAddressStr = pickupObj is Map ? (pickupObj['address']?.toString() ?? '') : (map['pickupAddress']?.toString() ?? '');
     final pickupLatVal = pickupObj is Map ? (pickupObj['lat'] as num?)?.toDouble() : (map['pickupLat'] as num?)?.toDouble();
     final pickupLngVal = pickupObj is Map ? (pickupObj['lng'] as num?)?.toDouble() : (map['pickupLng'] as num?)?.toDouble();
 
-    final dropObj = map['drop_address'];
+    final dropObj = map['drop_address'] ?? map['drop'];
     final dropAddressStr = dropObj is Map ? (dropObj['address']?.toString() ?? '') : (map['dropAddress']?.toString() ?? '');
     final dropLatVal = dropObj is Map ? (dropObj['lat'] as num?)?.toDouble() : (map['dropLat'] as num?)?.toDouble();
     final dropLngVal = dropObj is Map ? (dropObj['lng'] as num?)?.toDouble() : (map['dropLng'] as num?)?.toDouble();
 
     final driverJson = map['driver'] ?? map['captain'];
+    CaptainModel? parsedCaptain = driverJson != null && driverJson is Map<String, dynamic> ? CaptainModel.fromJson(driverJson) : null;
+
+    final driverLocJson = map['driverLocation'] ?? (driverJson is Map ? driverJson['location'] : null);
+    if (driverLocJson is Map && parsedCaptain != null) {
+      parsedCaptain = CaptainModel(
+        id: parsedCaptain.id,
+        name: parsedCaptain.name,
+        phone: parsedCaptain.phone,
+        rating: parsedCaptain.rating,
+        vehicleNumber: parsedCaptain.vehicleNumber,
+        vehicleModel: parsedCaptain.vehicleModel,
+        currentLat: (driverLocJson['lat'] as num?)?.toDouble(),
+        currentLng: (driverLocJson['lng'] as num?)?.toDouble(),
+      );
+    }
+
+    List<LatLng> rPoints = [];
+    final routeJson = map['route'];
+    if (routeJson is Map && routeJson['points'] is List) {
+      rPoints = (routeJson['points'] as List).map((p) {
+        final lat = (p['lat'] as num?)?.toDouble() ?? 0.0;
+        final lng = (p['lng'] as num?)?.toDouble() ?? 0.0;
+        return LatLng(lat, lng);
+      }).toList();
+    }
 
     return RideModel(
       rideId: map['id']?.toString() ?? map['rideId']?.toString() ?? map['_id']?.toString() ?? '',
@@ -276,7 +315,8 @@ class RideModel {
       rideType: parsedType,
       fare: (map['estimated_fare'] ?? map['fare'] as num?)?.toDouble() ?? 0.0,
       otp: map['otp_code']?.toString() ?? map['otp']?.toString(),
-      captain: driverJson != null && driverJson is Map<String, dynamic> ? CaptainModel.fromJson(driverJson) : null,
+      captain: parsedCaptain,
+      routePoints: rPoints,
       createdAt: map['created_at']?.toString() ?? map['createdAt']?.toString(),
     );
   }
@@ -460,4 +500,105 @@ class NearbyDriversRequest {
     if (radiusKm != null) 'radiusKm': radiusKm,
     if (limit != null) 'limit': limit,
   };
+}
+
+class RideHistoryItemModel {
+  final String id;
+  final String tripId;
+  final String status;
+  final String createdAt;
+  final String pickupAddress;
+  final String dropAddress;
+  final double distance;
+  final String duration;
+  final String paymentMethod;
+  final double fare;
+  final String driverName;
+  final String driverPhone;
+  final String vehicleNumber;
+  final String vehicleType;
+  final double rating;
+
+  RideHistoryItemModel({
+    required this.id,
+    required this.tripId,
+    required this.status,
+    required this.createdAt,
+    required this.pickupAddress,
+    required this.dropAddress,
+    required this.distance,
+    required this.duration,
+    required this.paymentMethod,
+    required this.fare,
+    required this.driverName,
+    required this.driverPhone,
+    required this.vehicleNumber,
+    required this.vehicleType,
+    required this.rating,
+  });
+
+  factory RideHistoryItemModel.fromJson(Map<String, dynamic> json) {
+    final pickup = json['pickup'];
+    final pickupAddr = pickup is Map ? (pickup['address']?.toString() ?? '') : (json['pickupAddress']?.toString() ?? '');
+
+    final drop = json['drop'];
+    final dropAddr = drop is Map ? (drop['address']?.toString() ?? '') : (json['dropAddress']?.toString() ?? '');
+
+    final driver = json['driver'];
+    final driverName = driver is Map ? (driver['fullName']?.toString() ?? driver['name']?.toString() ?? 'Driver') : 'Driver';
+    final driverPhone = driver is Map ? (driver['phone']?.toString() ?? '') : '';
+    final vehicleNumber = driver is Map ? (driver['vehicleNumber']?.toString() ?? '') : '';
+    final vehicleType = driver is Map ? (driver['vehicleType']?.toString() ?? 'Bike') : 'Bike';
+    final rating = driver is Map ? (driver['rating'] as num?)?.toDouble() ?? 4.8 : 4.8;
+
+    return RideHistoryItemModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      tripId: json['tripId']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'completed',
+      createdAt: json['createdAt']?.toString() ?? '',
+      pickupAddress: pickupAddr,
+      dropAddress: dropAddr,
+      distance: (json['distance'] as num?)?.toDouble() ?? 0.0,
+      duration: json['duration']?.toString() ?? '0 mins',
+      paymentMethod: json['paymentMethod']?.toString() ?? 'CASH',
+      fare: (json['fare'] as num?)?.toDouble() ?? 0.0,
+      driverName: driverName,
+      driverPhone: driverPhone,
+      vehicleNumber: vehicleNumber,
+      vehicleType: vehicleType,
+      rating: rating,
+    );
+  }
+}
+
+class RideHistoryResponse {
+  final List<RideHistoryItemModel> rides;
+  final int totalRides;
+  final int currentPage;
+  final int totalPages;
+  final int limit;
+
+  RideHistoryResponse({
+    required this.rides,
+    required this.totalRides,
+    required this.currentPage,
+    required this.totalPages,
+    required this.limit,
+  });
+
+  factory RideHistoryResponse.fromJson(Map<String, dynamic> json) {
+    final data = json['data'] is Map ? json['data'] : json;
+    final ridesList = data['rides'] is List
+        ? (data['rides'] as List).map((e) => RideHistoryItemModel.fromJson(e as Map<String, dynamic>)).toList()
+        : <RideHistoryItemModel>[];
+    final pagination = data['pagination'] is Map ? data['pagination'] as Map<String, dynamic> : {};
+
+    return RideHistoryResponse(
+      rides: ridesList,
+      totalRides: (pagination['totalRides'] as num?)?.toInt() ?? ridesList.length,
+      currentPage: (pagination['currentPage'] as num?)?.toInt() ?? 1,
+      totalPages: (pagination['totalPages'] as num?)?.toInt() ?? 1,
+      limit: (pagination['limit'] as num?)?.toInt() ?? 10,
+    );
+  }
 }

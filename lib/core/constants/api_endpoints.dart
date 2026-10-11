@@ -53,6 +53,7 @@ class ApiEndpoints {
   // 6. Cancellation Endpoints
   static String riderCancelPreview(String rideId) => '/api/rider/rides/$rideId/cancel-preview';
   static String riderCancelRide(String rideId) => '/api/rider/rides/$rideId/cancel';
+  static const String riderRidesHistory = '/api/rider/rides';
 
   // Legacy compatibility aliases
   static const String searchLocation = placesAutocomplete;

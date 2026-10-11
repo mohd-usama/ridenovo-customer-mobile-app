@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geocoding/geocoding.dart';
@@ -51,40 +52,44 @@ class RideState {
   RideState copyWith({
     LatLng? pickupLocation,
     LatLng? dropLocation,
+    bool clearDropLocation = false,
     String? pickupAddress,
     String? dropAddress,
     RideType? selectedRideType,
     String? selectedVehicleTypeId,
     String? promoCode,
+    bool clearPromo = false,
     double? estimatedFare,
     List<FareEstimateModel>? fareEstimates,
     List<LocationSuggestionModel>? locationSuggestions,
     List<LatLng>? polylinePoints,
     List<NearbyDriverModel>? nearbyDrivers,
     RideModel? currentRide,
+    bool clearCurrentRide = false,
     bool? isSearchingLocation,
     bool? isCalculatingFare,
     bool? isBooking,
     String? errorMessage,
+    bool clearError = false,
   }) {
     return RideState(
       pickupLocation: pickupLocation ?? this.pickupLocation,
-      dropLocation: dropLocation ?? this.dropLocation,
+      dropLocation: clearDropLocation ? null : (dropLocation ?? this.dropLocation),
       pickupAddress: pickupAddress ?? this.pickupAddress,
-      dropAddress: dropAddress ?? this.dropAddress,
+      dropAddress: clearDropLocation ? null : (dropAddress ?? this.dropAddress),
       selectedRideType: selectedRideType ?? this.selectedRideType,
-      selectedVehicleTypeId: selectedVehicleTypeId ?? this.selectedVehicleTypeId,
-      promoCode: promoCode ?? this.promoCode,
+      selectedVehicleTypeId: clearCurrentRide ? null : (selectedVehicleTypeId ?? this.selectedVehicleTypeId),
+      promoCode: clearPromo ? null : (promoCode ?? this.promoCode),
       estimatedFare: estimatedFare ?? this.estimatedFare,
       fareEstimates: fareEstimates ?? this.fareEstimates,
       locationSuggestions: locationSuggestions ?? this.locationSuggestions,
-      polylinePoints: polylinePoints ?? this.polylinePoints,
+      polylinePoints: clearDropLocation ? [] : (polylinePoints ?? this.polylinePoints),
       nearbyDrivers: nearbyDrivers ?? this.nearbyDrivers,
-      currentRide: currentRide ?? this.currentRide,
+      currentRide: clearCurrentRide ? null : (currentRide ?? this.currentRide),
       isSearchingLocation: isSearchingLocation ?? this.isSearchingLocation,
       isCalculatingFare: isCalculatingFare ?? this.isCalculatingFare,
       isBooking: isBooking ?? this.isBooking,
-      errorMessage: errorMessage ?? this.errorMessage,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -133,7 +138,9 @@ class RideNotifier extends StateNotifier<RideState> {
         }
 
         // State (administrativeArea)
-        if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty && !addressComponents.contains(place.administrativeArea)) {
+        if (place.administrativeArea != null &&
+            place.administrativeArea!.isNotEmpty &&
+            !addressComponents.contains(place.administrativeArea)) {
           addressComponents.add(place.administrativeArea!);
         }
 
@@ -166,7 +173,7 @@ class RideNotifier extends StateNotifier<RideState> {
   }
 
   void clearDropLocation() {
-    state = state.copyWith(dropLocation: null, dropAddress: null, polylinePoints: [], fareEstimates: [], selectedVehicleTypeId: null);
+    state = state.copyWith(clearDropLocation: true, fareEstimates: [], selectedVehicleTypeId: null);
   }
 
   void selectRideType(RideType type) {
@@ -197,7 +204,11 @@ class RideNotifier extends StateNotifier<RideState> {
 
     state = state.copyWith(isSearchingLocation: true);
 
-    final request = SearchLocationRequest(query: query, latitude: state.pickupLocation?.latitude, longitude: state.pickupLocation?.longitude);
+    final request = SearchLocationRequest(
+      query: query,
+      latitude: state.pickupLocation?.latitude,
+      longitude: state.pickupLocation?.longitude,
+    );
 
     final response = await _rideRepository.searchLocations(request);
 
@@ -278,11 +289,7 @@ class RideNotifier extends StateNotifier<RideState> {
         nearbyDrivers: nearbyDrivers,
       );
     } else {
-      state = state.copyWith(
-        isCalculatingFare: false,
-        polylinePoints: decodedPoints,
-        nearbyDrivers: nearbyDrivers,
-      );
+      state = state.copyWith(isCalculatingFare: false, polylinePoints: decodedPoints, nearbyDrivers: nearbyDrivers);
     }
   }
 
@@ -315,11 +322,79 @@ class RideNotifier extends StateNotifier<RideState> {
 
     if (response.isSuccess && response.data != null) {
       state = state.copyWith(isBooking: false, currentRide: response.data);
+      startActiveRidePolling();
       return true;
     } else {
       state = state.copyWith(isBooking: false, errorMessage: response.message ?? 'Failed to book ride. Please try again.');
       return false;
     }
+  }
+
+  Timer? _pollingTimer;
+
+  void startActiveRidePolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      print('🚀 [Polling] Checking active ride status...');
+      final response = await _rideRepository.getActiveRide();
+      print('🚀 [Polling Response] success: ${response.isSuccess}, data: ${response.data}');
+
+      if (response.isSuccess && response.data != null) {
+        final ride = response.data!;
+        print('🚀 [Polling Ride] status: ${ride.status}');
+
+        if (ride.status == RideStatus.completed || ride.status == RideStatus.cancelled) {
+          print('🚀 [Polling] Ride completed or cancelled. Clearing state.');
+          stopActiveRidePolling();
+          state = state.copyWith(
+            clearCurrentRide: true,
+            clearDropLocation: true,
+            clearPromo: true,
+            fareEstimates: [],
+            nearbyDrivers: [],
+            polylinePoints: [],
+          );
+        } else {
+          List<LatLng> points = state.polylinePoints;
+          if (ride.routePoints.isNotEmpty) {
+            points = ride.routePoints;
+          }
+          state = state.copyWith(currentRide: ride, polylinePoints: points);
+        }
+      } else {
+        print('🚀 [Polling] No active ride found or error. Clearing state.');
+        stopActiveRidePolling();
+        state = state.copyWith(
+          clearCurrentRide: true,
+          clearDropLocation: true,
+          clearPromo: true,
+          fareEstimates: [],
+          nearbyDrivers: [],
+          polylinePoints: [],
+        );
+      }
+    });
+  }
+
+  void stopActiveRidePolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
+  }
+
+  Future<bool> cancelActiveRide(String rideId) async {
+    print('🚀 [API Request] Cancelling ride: $rideId');
+    final response = await _rideRepository.cancelRideWithReason(rideId, CancelRideRequest(reason: 'Changed my mind'));
+    print('🚀 [API Response] Cancel ride success: ${response.isSuccess}, message: ${response.message}');
+
+    stopActiveRidePolling();
+    state = state.copyWith(clearCurrentRide: true, clearDropLocation: true, clearPromo: true, fareEstimates: [], nearbyDrivers: []);
+    return true;
+  }
+
+  @override
+  void dispose() {
+    stopActiveRidePolling();
+    super.dispose();
   }
 
   void resetRide() {
