@@ -24,7 +24,7 @@ class RidonovaApp extends StatelessWidget {
     return SafeArea(
       top: false,
       child: MaterialApp(
-        title: 'Ridonova - Customer app',
+        title: 'Ridonova - Customer',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const SplashScreen(),
