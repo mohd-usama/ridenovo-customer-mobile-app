@@ -24,7 +24,7 @@ subprojects {
         val android = extensions.findByType(com.android.build.gradle.BaseExtension::class.java)
         if (android != null) {
             val currentSdk = android.compileSdkVersion
-            val sdkVersion = currentSdk?.removePrefix("android-")?.toIntOrNull() ?: 0
+            val sdkVersion = currentSdk?.removePrefix("android-`")?.removePrefix("android-")?.toIntOrNull() ?: 0
             if (sdkVersion < 34) {
                 android.compileSdkVersion(34)
             }

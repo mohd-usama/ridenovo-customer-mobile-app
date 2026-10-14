@@ -29,6 +29,12 @@ abstract class RideRepository {
   Future<ApiResponse<bool>> cancelRideWithReason(String rideId, CancelRideRequest request);
   Future<ApiResponse<RideHistoryResponse>> getRideHistory({String type = 'all', int page = 1, int limit = 10});
 
+  // Recent Places APIs
+  Future<ApiResponse<List<RecentPlaceModel>>> getRecentPlaces();
+  Future<ApiResponse<RecentPlaceModel>> toggleFavoriteRecentPlace(String id, {bool? isFavorite});
+  Future<ApiResponse<RecentPlaceModel>> addRecentPlace(RecentPlaceModel place);
+  Future<ApiResponse<bool>> deleteRecentPlace(String id);
+
   // Saved Addresses APIs
   Future<ApiResponse<List<SavedAddressModel>>> getSavedAddresses();
   Future<ApiResponse<SavedAddressModel>> addAddress(SavedAddressModel address);
@@ -205,10 +211,12 @@ class RideRepositoryImpl implements RideRepository {
     return await apiService.get<RideModel?>(
       ApiEndpoints.riderActiveRide,
       fromJson: (json) {
+        if (json == null) return null;
         final data = json['data'];
         if (data == null) return null;
         final rideJson = data is Map<String, dynamic> ? (data['ride'] ?? data) : data;
         if (rideJson is Map<String, dynamic>) {
+          if (rideJson.isEmpty) return null;
           return RideModel.fromJson(rideJson);
         }
         return null;
@@ -281,6 +289,52 @@ class RideRepositoryImpl implements RideRepository {
       fromJson: (json) {
         return RideHistoryResponse.fromJson(json is Map<String, dynamic> ? json : {});
       },
+    );
+  }
+
+  @override
+  Future<ApiResponse<List<RecentPlaceModel>>> getRecentPlaces() async {
+    return await apiService.get<List<RecentPlaceModel>>(
+      ApiEndpoints.recentPlaces,
+      fromJson: (json) {
+        final data = json['data'];
+        final placesList = data is Map ? (data['places'] is List ? data['places'] : []) : (json is List ? json : []);
+        return (placesList as List).map((e) => RecentPlaceModel.fromJson(e as Map<String, dynamic>)).toList();
+      },
+    );
+  }
+
+  @override
+  Future<ApiResponse<RecentPlaceModel>> toggleFavoriteRecentPlace(String id, {bool? isFavorite}) async {
+    return await apiService.post<RecentPlaceModel>(
+      ApiEndpoints.recentPlaceFavorite(id),
+      data: isFavorite != null ? {'isFavorite': isFavorite} : null,
+      fromJson: (json) {
+        final data = json['data'];
+        final placeJson = data is Map ? (data['place'] ?? data) : json;
+        return RecentPlaceModel.fromJson(placeJson as Map<String, dynamic>);
+      },
+    );
+  }
+
+  @override
+  Future<ApiResponse<RecentPlaceModel>> addRecentPlace(RecentPlaceModel place) async {
+    return await apiService.post<RecentPlaceModel>(
+      ApiEndpoints.recentPlaces,
+      data: place.toJson(),
+      fromJson: (json) {
+        final data = json['data'];
+        final placeJson = data is Map ? (data['place'] ?? data) : json;
+        return RecentPlaceModel.fromJson(placeJson as Map<String, dynamic>);
+      },
+    );
+  }
+
+  @override
+  Future<ApiResponse<bool>> deleteRecentPlace(String id) async {
+    return await apiService.delete<bool>(
+      ApiEndpoints.recentPlaceDetail(id),
+      fromJson: (json) => json['success'] ?? true,
     );
   }
 }

@@ -6,6 +6,7 @@ import '../../../../core/utils/app_snackbar.dart';
 import '../../../auth/presentation/login_screen.dart';
 import '../../../auth/presentation/profile_details_screen.dart';
 import '../../../auth/providers/auth_provider.dart';
+import '../../providers/ride_provider.dart';
 import '../saved_places_screen.dart';
 
 class ProfileTab extends ConsumerWidget {
@@ -204,9 +205,39 @@ class ProfileTab extends ConsumerWidget {
                     ),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                     onTap: () async {
-                      await ref.read(authProvider.notifier).logout();
-                      if (context.mounted) {
-                        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+                      final shouldLogout = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          title: const Text('Log Out', style: TextStyle(fontWeight: FontWeight.bold)),
+                          content: const Text('Are you sure you want to log out? All active processes and timers will be stopped.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.error,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Log Out'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (shouldLogout == true) {
+                        ref.read(rideProvider.notifier).resetRide();
+                        await ref.read(authProvider.notifier).logout();
+                        if (context.mounted) {
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                            (route) => false,
+                          );
+                        }
                       }
                     },
                   ),

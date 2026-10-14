@@ -13,8 +13,31 @@ class MapViewWidget extends ConsumerStatefulWidget {
 
 class _MapViewWidgetState extends ConsumerState<MapViewWidget> {
   GoogleMapController? _mapController;
+  final Map<String, BitmapDescriptor> _customIcons = {};
 
   static const LatLng _defaultLocation = LatLng(28.6139, 77.2090); // New Delhi
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomMarkerIcons();
+  }
+
+  Future<void> _loadCustomMarkerIcons() async {
+    try {
+      final bikeIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(42, 42)), 'assets/arial_images/bike_ariel.png');
+      final autoIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(42, 42)), 'assets/arial_images/auto_ariel.png');
+      final carIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(42, 42)), 'assets/arial_images/car_ariel.png');
+
+      if (mounted) {
+        setState(() {
+          _customIcons['bike'] = bikeIcon;
+          _customIcons['auto'] = autoIcon;
+          _customIcons['car'] = carIcon;
+        });
+      }
+    } catch (_) {}
+  }
 
   void _animateToLocation(LatLng position) {
     _mapController?.animateCamera(CameraUpdate.newLatLngZoom(position, 15));
@@ -32,10 +55,7 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> {
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
-    LatLngBounds bounds = LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
+    LatLngBounds bounds = LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng));
     try {
       _mapController?.animateCamera(CameraUpdate.newLatLngBounds(bounds, 80));
     } catch (_) {}
@@ -60,14 +80,24 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> {
     final Set<Polyline> polylines = {};
 
     if (activeRide != null) {
-      // Active Ride Mode: Show assigned driver and pickup/drop (and route)
+      // Active Ride Mode: Show assigned driver aerial icon and pickup/drop (and route)
       final captain = activeRide.captain;
       if (captain != null && captain.currentLat != null && captain.currentLng != null) {
+        BitmapDescriptor assignedIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+        final rideTypeStr = activeRide.rideType.name.toLowerCase();
+        if (rideTypeStr.contains('bike') && _customIcons.containsKey('bike')) {
+          assignedIcon = _customIcons['bike']!;
+        } else if (rideTypeStr.contains('auto') && _customIcons.containsKey('auto')) {
+          assignedIcon = _customIcons['auto']!;
+        } else if (_customIcons.containsKey('car')) {
+          assignedIcon = _customIcons['car']!;
+        }
+
         markers.add(
           Marker(
             markerId: const MarkerId('assigned_driver'),
             position: LatLng(captain.currentLat!, captain.currentLng!),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+            icon: assignedIcon,
             infoWindow: InfoWindow(title: captain.name, snippet: captain.vehicleNumber),
           ),
         );
@@ -130,29 +160,32 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> {
         );
       }
 
-      // Add Nearby Drivers Markers
+      // Add Nearby Drivers Markers with Aerial Custom Icons
       for (final driver in rideState.nearbyDrivers) {
+        BitmapDescriptor markerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+        final vType = driver.vehicleType.toLowerCase();
+        if (vType.contains('bike') && _customIcons.containsKey('bike')) {
+          markerIcon = _customIcons['bike']!;
+        } else if (vType.contains('auto') && _customIcons.containsKey('auto')) {
+          markerIcon = _customIcons['auto']!;
+        } else if (_customIcons.containsKey('car')) {
+          markerIcon = _customIcons['car']!;
+        }
+
         markers.add(
           Marker(
             markerId: MarkerId('driver_${driver.driverId}'),
             position: LatLng(driver.latitude, driver.longitude),
             rotation: driver.heading,
             anchor: const Offset(0.5, 0.5),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+            icon: markerIcon,
             infoWindow: InfoWindow(title: '${driver.vehicleType} • ⭐ ${driver.rating}'),
           ),
         );
       }
 
       if (rideState.polylinePoints.isNotEmpty) {
-        polylines.add(
-          Polyline(
-            polylineId: const PolylineId('route'),
-            points: rideState.polylinePoints,
-            color: Colors.black,
-            width: 5,
-          ),
-        );
+        polylines.add(Polyline(polylineId: const PolylineId('route'), points: rideState.polylinePoints, color: Colors.black, width: 5));
       }
     }
 

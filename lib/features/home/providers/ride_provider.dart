@@ -97,7 +97,41 @@ class RideState {
 class RideNotifier extends StateNotifier<RideState> {
   final RideRepository _rideRepository;
 
-  RideNotifier(this._rideRepository) : super(const RideState());
+  RideNotifier(this._rideRepository) : super(const RideState()) {
+    checkActiveRideOnStartup();
+  }
+
+  Future<void> checkActiveRideOnStartup() async {
+    print('🚀 [Startup Check] Checking if active ride exists...');
+    final response = await _rideRepository.getActiveRide();
+    if (response.isSuccess && response.data != null) {
+      final ride = response.data!;
+      print('🚀 [Startup Check] Found active ride: #${ride.rideId}, status: ${ride.status}');
+      if (ride.status == RideStatus.completed || ride.status == RideStatus.cancelled) {
+        state = state.copyWith(
+          clearCurrentRide: true,
+          clearDropLocation: true,
+          clearPromo: true,
+          fareEstimates: [],
+          nearbyDrivers: [],
+          polylinePoints: [],
+        );
+      } else {
+        state = state.copyWith(currentRide: ride, polylinePoints: ride.routePoints);
+        startActiveRidePolling();
+      }
+    } else {
+      print('🚀 [Startup Check] No active ride found on startup.');
+      state = state.copyWith(
+        clearCurrentRide: true,
+        clearDropLocation: true,
+        clearPromo: true,
+        fareEstimates: [],
+        nearbyDrivers: [],
+        polylinePoints: [],
+      );
+    }
+  }
 
   void setPickupLocation(LatLng location, String address) {
     state = state.copyWith(pickupLocation: location, pickupAddress: address);
@@ -405,4 +439,13 @@ class RideNotifier extends StateNotifier<RideState> {
 final rideProvider = StateNotifierProvider<RideNotifier, RideState>((ref) {
   final repository = ref.watch(rideRepositoryProvider);
   return RideNotifier(repository);
+});
+
+final recentPlacesProvider = FutureProvider<List<RecentPlaceModel>>((ref) async {
+  final repo = ref.watch(rideRepositoryProvider);
+  final response = await repo.getRecentPlaces();
+  if (response.isSuccess && response.data != null) {
+    return response.data!;
+  }
+  return [];
 });

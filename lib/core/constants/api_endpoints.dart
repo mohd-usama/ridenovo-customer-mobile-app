@@ -55,6 +55,11 @@ class ApiEndpoints {
   static String riderCancelRide(String rideId) => '/api/rider/rides/$rideId/cancel';
   static const String riderRidesHistory = '/api/rider/rides';
 
+  // Recent Places Endpoints
+  static const String recentPlaces = '/api/places/recent';
+  static String recentPlaceFavorite(String id) => '/api/places/recent/$id/favorite';
+  static String recentPlaceDetail(String id) => '/api/places/recent/$id';
+
   // Legacy compatibility aliases
   static const String searchLocation = placesAutocomplete;
   static const String calculateFare = riderFareEstimate;

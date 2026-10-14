@@ -602,3 +602,46 @@ class RideHistoryResponse {
     );
   }
 }
+
+class RecentPlaceModel {
+  final String id;
+  final String placeId;
+  final String title;
+  final String subtitle;
+  final double lat;
+  final double lng;
+  final bool isFavorite;
+  final String? visitedAt;
+
+  RecentPlaceModel({
+    required this.id,
+    required this.placeId,
+    required this.title,
+    required this.subtitle,
+    required this.lat,
+    required this.lng,
+    required this.isFavorite,
+    this.visitedAt,
+  });
+
+  factory RecentPlaceModel.fromJson(Map<String, dynamic> json) {
+    return RecentPlaceModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      placeId: json['placeId']?.toString() ?? json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? json['name']?.toString() ?? '',
+      subtitle: json['subtitle']?.toString() ?? json['address']?.toString() ?? '',
+      lat: (json['lat'] ?? json['latitude'] as num?)?.toDouble() ?? 0.0,
+      lng: (json['lng'] ?? json['longitude'] as num?)?.toDouble() ?? 0.0,
+      isFavorite: json['isFavorite'] == true,
+      visitedAt: json['visitedAt']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'subtitle': subtitle,
+    'lat': lat,
+    'lng': lng,
+    'isFavorite': isFavorite,
+  };
+}

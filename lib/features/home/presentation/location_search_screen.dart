@@ -85,6 +85,19 @@ class _LocationSearchScreenState extends ConsumerState<LocationSearchScreen> {
       } else {
         _dropController.text = suggestion.title;
         ref.read(rideProvider.notifier).setDropLocation(LatLng(suggestion.latitude ?? 28.6139, suggestion.longitude ?? 77.2090), fullAddress);
+
+        final place = RecentPlaceModel(
+          id: '',
+          placeId: suggestion.placeId,
+          title: suggestion.title,
+          subtitle: suggestion.subtitle,
+          lat: suggestion.latitude ?? 28.6139,
+          lng: suggestion.longitude ?? 77.2090,
+          isFavorite: false,
+        );
+        ref.read(rideRepositoryProvider).addRecentPlace(place);
+        ref.invalidate(recentPlacesProvider);
+
         Navigator.of(context).pop();
       }
     });

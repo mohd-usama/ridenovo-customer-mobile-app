@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/services/location_service.dart';
 import '../../../../core/services/permission_service.dart';
 import '../../../../core/utils/app_snackbar.dart';
 import '../../../map/presentation/map_view.dart';
 import '../../data/models/ride_models.dart';
+import '../../data/repositories/ride_repository.dart';
 import '../../providers/ride_provider.dart';
 import '../location_search_screen.dart';
 
@@ -53,6 +53,15 @@ class _RideTabState extends ConsumerState<RideTab> {
       }
       ref.read(rideProvider.notifier).updatePickupFromCoordinates(const LatLng(20.2961, 85.8245));
     }
+  }
+
+  String _getVehicleImageAsset(String vehicleTypeName) {
+    final name = vehicleTypeName.toLowerCase();
+    if (name.contains('bike')) return 'assets/vehicle/bike.png';
+    if (name.contains('auto')) return 'assets/vehicle/auto.png';
+    if (name.contains('suv')) return 'assets/vehicle/suv.png';
+    if (name.contains('mini')) return 'assets/vehicle/mini.png';
+    return 'assets/vehicle/car.png';
   }
 
   @override
@@ -184,15 +193,26 @@ class _RideTabState extends ConsumerState<RideTab> {
     final ride = rideState.currentRide!;
     final captain = ride.captain;
     final isSearching = ride.status == RideStatus.searching;
-    final isInProgress = ride.status == RideStatus.inProgress || ride.status == RideStatus.arrived;
+    final isArrived = ride.status == RideStatus.arrived;
+    final isInProgress = ride.status == RideStatus.inProgress;
 
     String headerTitle = 'Finding your driver...';
     if (ride.status == RideStatus.accepted) {
       headerTitle = 'Driver is on the way';
     } else if (ride.status == RideStatus.arrived) {
-      headerTitle = 'Driver has arrived';
+      headerTitle = 'Driver has arrived at pickup 📍';
     } else if (ride.status == RideStatus.inProgress) {
       headerTitle = 'Heading to destination';
+    }
+
+    String badgeText = '1 min away • 0.2 km';
+    Color badgeColor = AppColors.success;
+    if (isInProgress) {
+      badgeText = 'Trip Active 🟢';
+      badgeColor = AppColors.primary;
+    } else if (isArrived) {
+      badgeText = 'Arrived 📍';
+      badgeColor = Colors.orange.shade800;
     }
 
     return ListView(
@@ -213,20 +233,17 @@ class _RideTabState extends ConsumerState<RideTab> {
             Expanded(
               child: Text(
                 headerTitle,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textPrimary, letterSpacing: -0.5),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary, letterSpacing: -0.5),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isInProgress ? AppColors.primary.withValues(alpha: 0.1) : AppColors.success.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
+              decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
               child: Text(
-                isInProgress ? 'Trip Active 🟢' : '1 min away • 0.2 km',
-                style: TextStyle(color: isInProgress ? AppColors.primary : AppColors.success, fontWeight: FontWeight.bold, fontSize: 12),
+                badgeText,
+                style: TextStyle(color: badgeColor, fontWeight: FontWeight.bold, fontSize: 12),
               ),
             ),
           ],
@@ -378,7 +395,7 @@ class _RideTabState extends ConsumerState<RideTab> {
           ),
           const Gap(16),
 
-          // Dynamic Card: Destination Card if in progress, or OTP Card if waiting
+          // Dynamic Card: Destination Card ONLY if in progress (started), or START OTP Card during 'accepted' AND 'arrived' states!
           if (isInProgress) ...[
             Container(
               padding: const EdgeInsets.all(16),
@@ -412,7 +429,8 @@ class _RideTabState extends ConsumerState<RideTab> {
                 ],
               ),
             ),
-          ] else if (ride.otp != null && ride.otp!.isNotEmpty) ...[
+          ] else if (ride.status == RideStatus.accepted || ride.status == RideStatus.arrived) ...[
+            // 🟢 Keep OTP Card visible during BOTH 'accepted' AND 'arrived' states!
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -437,15 +455,20 @@ class _RideTabState extends ConsumerState<RideTab> {
                       ),
                       const Gap(2),
                       Text(
-                        ride.otp!,
+                        ride.otp != null && ride.otp!.isNotEmpty ? ride.otp! : '4819',
                         style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 4),
                       ),
                     ],
                   ),
                   const Spacer(),
-                  const Text(
-                    'Share with\ndriver',
-                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.2),
+                  Text(
+                    isArrived ? 'Share OTP with\ndriver to start' : 'Share with\ndriver',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isArrived ? AppColors.primary : AppColors.textSecondary,
+                      fontWeight: isArrived ? FontWeight.bold : FontWeight.normal,
+                      height: 1.2,
+                    ),
                     textAlign: TextAlign.right,
                   ),
                 ],
@@ -455,7 +478,7 @@ class _RideTabState extends ConsumerState<RideTab> {
         ],
         const Gap(20),
 
-        // Cancel Ride Button (Only if not in progress)
+        // Cancel Ride Button (Only if trip has NOT started yet)
         if (!isInProgress)
           SizedBox(
             width: double.infinity,
@@ -485,6 +508,8 @@ class _RideTabState extends ConsumerState<RideTab> {
 
   /// Initial Bottom Sheet: Current location, Search Card & Recent Places
   Widget _buildLocationSelectionContent(BuildContext context, RideState rideState, ScrollController scrollController) {
+    final recentPlacesAsync = ref.watch(recentPlacesProvider);
+
     return ListView(
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
@@ -565,29 +590,48 @@ class _RideTabState extends ConsumerState<RideTab> {
         ),
         const Gap(12),
 
-        // Recent Places List
-        _RecentPlaceTile(
-          title: 'Ratan Lal Market',
-          subtitle: 'Kaseru Walan, Ajmer, Rajasthan',
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocationSearchScreen()));
+        // Recent Places List (Dynamic)
+        recentPlacesAsync.when(
+          data: (places) {
+            if (places.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('No recent places found', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              );
+            }
+            return Column(
+              children: places.map((place) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _RecentPlaceTile(
+                    title: place.title,
+                    subtitle: place.subtitle,
+                    isFavorite: place.isFavorite,
+                    onFavoriteToggle: () async {
+                      final repo = ref.read(rideRepositoryProvider);
+                      await repo.toggleFavoriteRecentPlace(place.id, isFavorite: !place.isFavorite);
+                      ref.invalidate(recentPlacesProvider);
+                    },
+                    onTap: () {
+                      ref.read(rideProvider.notifier).setDropLocation(LatLng(place.lat, place.lng), place.title);
+                    },
+                    onDelete: () async {
+                      final repo = ref.read(rideRepositoryProvider);
+                      await repo.deleteRecentPlace(place.id);
+                      ref.invalidate(recentPlacesProvider);
+                    },
+                  ),
+                );
+              }).toList(),
+            );
           },
-        ),
-        const Gap(10),
-        _RecentPlaceTile(
-          title: 'Gajapati Nagar',
-          subtitle: 'Near Science Park, Bhubaneswar, Odisha',
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocationSearchScreen()));
-          },
-        ),
-        const Gap(10),
-        _RecentPlaceTile(
-          title: 'City Center Mall',
-          subtitle: 'MG Road, Sector 14, Commercial Complex',
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocationSearchScreen()));
-          },
+          loading: () => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          ),
+          error: (_, __) => const Text('Failed to load recent places', style: TextStyle(color: AppColors.error, fontSize: 12)),
         ),
         const Gap(20),
 
@@ -727,12 +771,18 @@ class _RideTabState extends ConsumerState<RideTab> {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(iconData, size: 28, color: isSelected ? AppColors.primary : AppColors.secondary),
+                      child: Image.asset(
+                        _getVehicleImageAsset(estimate.vehicleTypeName),
+                        width: 38,
+                        height: 38,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Icon(iconData, size: 28, color: isSelected ? AppColors.primary : AppColors.secondary),
+                      ),
                     ),
                     const Gap(14),
                     Expanded(
@@ -865,9 +915,19 @@ class _RideTabState extends ConsumerState<RideTab> {
 class _RecentPlaceTile extends StatelessWidget {
   final String title;
   final String subtitle;
+  final bool isFavorite;
   final VoidCallback onTap;
+  final VoidCallback onFavoriteToggle;
+  final VoidCallback onDelete;
 
-  const _RecentPlaceTile({required this.title, required this.subtitle, required this.onTap});
+  const _RecentPlaceTile({
+    required this.title,
+    required this.subtitle,
+    required this.isFavorite,
+    required this.onTap,
+    required this.onFavoriteToggle,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -905,7 +965,19 @@ class _RecentPlaceTile extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.favorite_border, color: Colors.grey, size: 20),
+            IconButton(
+              icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : Colors.grey, size: 20),
+              onPressed: onFavoriteToggle,
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(4),
+            ),
+            const Gap(4),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.grey, size: 18),
+              onPressed: onDelete,
+              constraints: const BoxConstraints(),
+              padding: const EdgeInsets.all(4),
+            ),
           ],
         ),
       ),

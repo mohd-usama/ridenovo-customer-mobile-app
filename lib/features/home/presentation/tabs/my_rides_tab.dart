@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/app_snackbar.dart';
 import '../../data/models/ride_models.dart';
@@ -106,6 +107,16 @@ class _RidesList extends StatelessWidget {
 
   const _RidesList({required this.rides, required this.getIcon});
 
+  String _formatDate(String isoString) {
+    if (isoString.isEmpty) return '';
+    try {
+      final dateTime = DateTime.parse(isoString).toLocal();
+      return DateFormat('dd MMM yyyy, hh:mm a').format(dateTime);
+    } catch (_) {
+      return isoString;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (rides.isEmpty) {
@@ -160,32 +171,41 @@ class _RidesList extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(getIcon(ride.vehicleType), color: AppColors.primary, size: 22),
                         ),
-                        child: Icon(getIcon(ride.vehicleType), color: AppColors.primary, size: 22),
-                      ),
-                      const Gap(12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            ride.vehicleType.isNotEmpty ? '${ride.vehicleType} Ride' : 'Ride',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.textPrimary),
+                        const Gap(12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                ride.vehicleType.isNotEmpty ? '${ride.vehicleType} Ride' : 'Ride',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.textPrimary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                _formatDate(ride.createdAt),
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          Text(
-                            ride.createdAt,
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
+                  const Gap(8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
