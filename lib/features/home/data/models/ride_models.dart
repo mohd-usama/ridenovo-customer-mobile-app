@@ -645,3 +645,62 @@ class RecentPlaceModel {
     'isFavorite': isFavorite,
   };
 }
+
+/// Model for live driver location stream emitted via Socket.IO (`driver:location_updated`)
+class DriverLocationUpdate {
+  final String rideId;
+  final String driverId;
+  final String? driverName;
+  final double lat;
+  final double lng;
+  final double heading;
+  final double speed;
+  final double? accuracy;
+  final String vehicleType;
+  final String? plateNumber;
+  final String? timestamp;
+
+  DriverLocationUpdate({
+    required this.rideId,
+    required this.driverId,
+    this.driverName,
+    required this.lat,
+    required this.lng,
+    this.heading = 0.0,
+    this.speed = 0.0,
+    this.accuracy,
+    this.vehicleType = 'bike',
+    this.plateNumber,
+    this.timestamp,
+  });
+
+  factory DriverLocationUpdate.fromJson(Map<String, dynamic> json) {
+    return DriverLocationUpdate(
+      rideId: json['rideId']?.toString() ?? '',
+      driverId: json['driverId']?.toString() ?? json['id']?.toString() ?? '',
+      driverName: json['driverName']?.toString() ?? json['name']?.toString(),
+      lat: (json['lat'] ?? json['latitude'] as num?)?.toDouble() ?? 0.0,
+      lng: (json['lng'] ?? json['longitude'] as num?)?.toDouble() ?? 0.0,
+      heading: (json['heading'] as num?)?.toDouble() ?? 0.0,
+      speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
+      accuracy: (json['accuracy'] as num?)?.toDouble(),
+      vehicleType: json['vehicleType']?.toString() ?? 'bike',
+      plateNumber: json['plateNumber']?.toString() ?? json['vehicleNumber']?.toString(),
+      timestamp: json['timestamp']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'rideId': rideId,
+    'driverId': driverId,
+    'driverName': driverName,
+    'lat': lat,
+    'lng': lng,
+    'heading': heading,
+    'speed': speed,
+    'accuracy': accuracy,
+    'vehicleType': vehicleType,
+    'plateNumber': plateNumber,
+    'timestamp': timestamp,
+  };
+}

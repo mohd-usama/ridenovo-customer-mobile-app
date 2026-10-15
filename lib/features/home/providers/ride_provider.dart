@@ -5,6 +5,7 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/network/api_response.dart';
+import '../../../core/services/socket_service.dart';
 import '../data/models/ride_models.dart';
 import '../data/repositories/ride_repository.dart';
 
@@ -24,6 +25,7 @@ class RideState {
   final List<LatLng> polylinePoints;
   final List<NearbyDriverModel> nearbyDrivers;
   final RideModel? currentRide;
+  final DriverLocationUpdate? liveDriverLocation;
   final bool isSearchingLocation;
   final bool isCalculatingFare;
   final bool isBooking;
@@ -43,6 +45,7 @@ class RideState {
     this.polylinePoints = const [],
     this.nearbyDrivers = const [],
     this.currentRide,
+    this.liveDriverLocation,
     this.isSearchingLocation = false,
     this.isCalculatingFare = false,
     this.isBooking = false,
@@ -66,6 +69,8 @@ class RideState {
     List<NearbyDriverModel>? nearbyDrivers,
     RideModel? currentRide,
     bool clearCurrentRide = false,
+    DriverLocationUpdate? liveDriverLocation,
+    bool clearLiveDriverLocation = false,
     bool? isSearchingLocation,
     bool? isCalculatingFare,
     bool? isBooking,
@@ -86,6 +91,7 @@ class RideState {
       polylinePoints: clearDropLocation ? [] : (polylinePoints ?? this.polylinePoints),
       nearbyDrivers: nearbyDrivers ?? this.nearbyDrivers,
       currentRide: clearCurrentRide ? null : (currentRide ?? this.currentRide),
+      liveDriverLocation: clearLiveDriverLocation ? null : (liveDriverLocation ?? this.liveDriverLocation),
       isSearchingLocation: isSearchingLocation ?? this.isSearchingLocation,
       isCalculatingFare: isCalculatingFare ?? this.isCalculatingFare,
       isBooking: isBooking ?? this.isBooking,
@@ -96,9 +102,122 @@ class RideState {
 
 class RideNotifier extends StateNotifier<RideState> {
   final RideRepository _rideRepository;
+  final SocketService _socketService;
+  StreamSubscription? _locationSubscription;
+  StreamSubscription? _statusSubscription;
 
-  RideNotifier(this._rideRepository) : super(const RideState()) {
+  RideNotifier(this._rideRepository, this._socketService) : super(const RideState()) {
+    _initSocketListeners();
     checkActiveRideOnStartup();
+  }
+
+  void _initSocketListeners() {
+    _locationSubscription = _socketService.locationUpdates.listen((data) {
+      print('📍 [RideNotifier] Live driver location update: $data');
+      final locationUpdate = DriverLocationUpdate.fromJson(data);
+
+      CaptainModel? updatedCaptain = state.currentRide?.captain;
+      if (updatedCaptain != null) {
+        updatedCaptain = CaptainModel(
+          id: updatedCaptain.id.isNotEmpty ? updatedCaptain.id : locationUpdate.driverId,
+          name: updatedCaptain.name != 'Captain' ? updatedCaptain.name : (locationUpdate.driverName ?? 'Captain'),
+          phone: updatedCaptain.phone,
+          rating: updatedCaptain.rating,
+          vehicleNumber: locationUpdate.plateNumber ?? updatedCaptain.vehicleNumber,
+          vehicleModel: updatedCaptain.vehicleModel,
+          currentLat: locationUpdate.lat,
+          currentLng: locationUpdate.lng,
+        );
+      } else {
+        updatedCaptain = CaptainModel(
+          id: locationUpdate.driverId,
+          name: locationUpdate.driverName ?? 'Captain',
+          phone: '',
+          rating: 4.8,
+          vehicleNumber: locationUpdate.plateNumber ?? '',
+          vehicleModel: locationUpdate.vehicleType,
+          currentLat: locationUpdate.lat,
+          currentLng: locationUpdate.lng,
+        );
+      }
+
+      RideModel? updatedRide = state.currentRide;
+      if (updatedRide != null) {
+        updatedRide = RideModel(
+          rideId: updatedRide.rideId,
+          status: updatedRide.status,
+          pickupAddress: updatedRide.pickupAddress,
+          pickupLat: updatedRide.pickupLat,
+          pickupLng: updatedRide.pickupLng,
+          dropAddress: updatedRide.dropAddress,
+          dropLat: updatedRide.dropLat,
+          dropLng: updatedRide.dropLng,
+          rideType: updatedRide.rideType,
+          fare: updatedRide.fare,
+          otp: updatedRide.otp,
+          captain: updatedCaptain,
+          routePoints: updatedRide.routePoints,
+          createdAt: updatedRide.createdAt,
+        );
+      }
+
+      state = state.copyWith(liveDriverLocation: locationUpdate, currentRide: updatedRide);
+    });
+
+    _statusSubscription = _socketService.rideStatusUpdates.listen((data) {
+      print('🔄 [RideNotifier] Ride status update: $data');
+      final rideId = data['rideId']?.toString() ?? state.currentRide?.rideId ?? '';
+      final statusStr = data['status']?.toString().toLowerCase() ?? '';
+      final otpCode = data['otp']?.toString() ?? data['otp_code']?.toString();
+
+      RideStatus parsedStatus = state.currentRide?.status ?? RideStatus.searching;
+      if (statusStr.contains('accept')) {
+        parsedStatus = RideStatus.accepted;
+      } else if (statusStr.contains('arrive')) {
+        parsedStatus = RideStatus.arrived;
+      } else if (statusStr.contains('progress') || statusStr.contains('ongoing') || statusStr.contains('start')) {
+        parsedStatus = RideStatus.inProgress;
+      } else if (statusStr.contains('complete') || statusStr.contains('finish') || statusStr.contains('end')) {
+        parsedStatus = RideStatus.completed;
+      } else if (statusStr.contains('cancel')) {
+        parsedStatus = RideStatus.cancelled;
+      }
+
+      if (parsedStatus == RideStatus.completed || parsedStatus == RideStatus.cancelled) {
+        _socketService.leaveRide(rideId);
+        stopActiveRidePolling();
+        state = state.copyWith(
+          clearCurrentRide: true,
+          clearDropLocation: true,
+          clearPromo: true,
+          clearLiveDriverLocation: true,
+          fareEstimates: [],
+          nearbyDrivers: [],
+          polylinePoints: [],
+        );
+      } else {
+        if (state.currentRide != null) {
+          final existing = state.currentRide!;
+          final updatedRide = RideModel(
+            rideId: existing.rideId,
+            status: parsedStatus,
+            pickupAddress: existing.pickupAddress,
+            pickupLat: existing.pickupLat,
+            pickupLng: existing.pickupLng,
+            dropAddress: existing.dropAddress,
+            dropLat: existing.dropLat,
+            dropLng: existing.dropLng,
+            rideType: existing.rideType,
+            fare: existing.fare,
+            otp: otpCode ?? existing.otp,
+            captain: existing.captain,
+            routePoints: existing.routePoints,
+            createdAt: existing.createdAt,
+          );
+          state = state.copyWith(currentRide: updatedRide);
+        }
+      }
+    });
   }
 
   Future<void> checkActiveRideOnStartup() async {
@@ -112,12 +231,14 @@ class RideNotifier extends StateNotifier<RideState> {
           clearCurrentRide: true,
           clearDropLocation: true,
           clearPromo: true,
+          clearLiveDriverLocation: true,
           fareEstimates: [],
           nearbyDrivers: [],
           polylinePoints: [],
         );
       } else {
         state = state.copyWith(currentRide: ride, polylinePoints: ride.routePoints);
+        _socketService.joinRide(ride.rideId);
         startActiveRidePolling();
       }
     } else {
@@ -126,6 +247,7 @@ class RideNotifier extends StateNotifier<RideState> {
         clearCurrentRide: true,
         clearDropLocation: true,
         clearPromo: true,
+        clearLiveDriverLocation: true,
         fareEstimates: [],
         nearbyDrivers: [],
         polylinePoints: [],
@@ -147,43 +269,34 @@ class RideNotifier extends StateNotifier<RideState> {
         final place = placemarks.first;
         final List<String> addressComponents = [];
 
-        // Street / Building / Landmark
         if (place.street != null && place.street!.isNotEmpty && place.street != place.name) {
           addressComponents.add(place.street!);
         } else if (place.name != null && place.name!.isNotEmpty) {
           addressComponents.add(place.name!);
         }
 
-        // SubLocality / Area
         if (place.subLocality != null && place.subLocality!.isNotEmpty && !addressComponents.contains(place.subLocality)) {
           addressComponents.add(place.subLocality!);
         }
 
-        // Locality / City
         if (place.locality != null && place.locality!.isNotEmpty && !addressComponents.contains(place.locality)) {
           addressComponents.add(place.locality!);
         }
 
-        // District (subAdministrativeArea)
         if (place.subAdministrativeArea != null &&
             place.subAdministrativeArea!.isNotEmpty &&
             !addressComponents.contains(place.subAdministrativeArea)) {
           addressComponents.add(place.subAdministrativeArea!);
         }
 
-        // State (administrativeArea)
-        if (place.administrativeArea != null &&
-            place.administrativeArea!.isNotEmpty &&
-            !addressComponents.contains(place.administrativeArea)) {
+        if (place.administrativeArea != null && place.administrativeArea!.isNotEmpty && !addressComponents.contains(place.administrativeArea)) {
           addressComponents.add(place.administrativeArea!);
         }
 
-        // Pincode (postalCode)
         if (place.postalCode != null && place.postalCode!.isNotEmpty) {
           addressComponents.add(place.postalCode!);
         }
 
-        // Country
         if (place.country != null && place.country!.isNotEmpty && !addressComponents.contains(place.country)) {
           addressComponents.add(place.country!);
         }
@@ -238,11 +351,7 @@ class RideNotifier extends StateNotifier<RideState> {
 
     state = state.copyWith(isSearchingLocation: true);
 
-    final request = SearchLocationRequest(
-      query: query,
-      latitude: state.pickupLocation?.latitude,
-      longitude: state.pickupLocation?.longitude,
-    );
+    final request = SearchLocationRequest(query: query, latitude: state.pickupLocation?.latitude, longitude: state.pickupLocation?.longitude);
 
     final response = await _rideRepository.searchLocations(request);
 
@@ -356,6 +465,7 @@ class RideNotifier extends StateNotifier<RideState> {
 
     if (response.isSuccess && response.data != null) {
       state = state.copyWith(isBooking: false, currentRide: response.data);
+      _socketService.joinRide(response.data!.rideId);
       startActiveRidePolling();
       return true;
     } else {
@@ -371,19 +481,19 @@ class RideNotifier extends StateNotifier<RideState> {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       print('🚀 [Polling] Checking active ride status...');
       final response = await _rideRepository.getActiveRide();
-      print('🚀 [Polling Response] success: ${response.isSuccess}, data: ${response.data}');
 
       if (response.isSuccess && response.data != null) {
         final ride = response.data!;
-        print('🚀 [Polling Ride] status: ${ride.status}');
 
         if (ride.status == RideStatus.completed || ride.status == RideStatus.cancelled) {
           print('🚀 [Polling] Ride completed or cancelled. Clearing state.');
+          _socketService.leaveRide(ride.rideId);
           stopActiveRidePolling();
           state = state.copyWith(
             clearCurrentRide: true,
             clearDropLocation: true,
             clearPromo: true,
+            clearLiveDriverLocation: true,
             fareEstimates: [],
             nearbyDrivers: [],
             polylinePoints: [],
@@ -402,6 +512,7 @@ class RideNotifier extends StateNotifier<RideState> {
           clearCurrentRide: true,
           clearDropLocation: true,
           clearPromo: true,
+          clearLiveDriverLocation: true,
           fareEstimates: [],
           nearbyDrivers: [],
           polylinePoints: [],
@@ -417,16 +528,25 @@ class RideNotifier extends StateNotifier<RideState> {
 
   Future<bool> cancelActiveRide(String rideId) async {
     print('🚀 [API Request] Cancelling ride: $rideId');
-    final response = await _rideRepository.cancelRideWithReason(rideId, CancelRideRequest(reason: 'Changed my mind'));
-    print('🚀 [API Response] Cancel ride success: ${response.isSuccess}, message: ${response.message}');
+    _socketService.leaveRide(rideId);
+    await _rideRepository.cancelRideWithReason(rideId, CancelRideRequest(reason: 'Changed my mind'));
 
     stopActiveRidePolling();
-    state = state.copyWith(clearCurrentRide: true, clearDropLocation: true, clearPromo: true, fareEstimates: [], nearbyDrivers: []);
+    state = state.copyWith(
+      clearCurrentRide: true,
+      clearDropLocation: true,
+      clearPromo: true,
+      clearLiveDriverLocation: true,
+      fareEstimates: [],
+      nearbyDrivers: [],
+    );
     return true;
   }
 
   @override
   void dispose() {
+    _locationSubscription?.cancel();
+    _statusSubscription?.cancel();
     stopActiveRidePolling();
     super.dispose();
   }
@@ -438,7 +558,8 @@ class RideNotifier extends StateNotifier<RideState> {
 
 final rideProvider = StateNotifierProvider<RideNotifier, RideState>((ref) {
   final repository = ref.watch(rideRepositoryProvider);
-  return RideNotifier(repository);
+  final socketService = ref.watch(socketServiceProvider);
+  return RideNotifier(repository, socketService);
 });
 
 final recentPlacesProvider = FutureProvider<List<RecentPlaceModel>>((ref) async {

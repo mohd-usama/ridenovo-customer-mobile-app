@@ -332,9 +332,6 @@ class RideRepositoryImpl implements RideRepository {
 
   @override
   Future<ApiResponse<bool>> deleteRecentPlace(String id) async {
-    return await apiService.delete<bool>(
-      ApiEndpoints.recentPlaceDetail(id),
-      fromJson: (json) => json['success'] ?? true,
-    );
+    return await apiService.delete<bool>(ApiEndpoints.recentPlaceDetail(id), fromJson: (json) => json['success'] ?? true);
   }
 }

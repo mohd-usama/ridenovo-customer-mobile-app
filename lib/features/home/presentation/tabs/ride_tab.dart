@@ -9,7 +9,6 @@ import '../../../../core/services/permission_service.dart';
 import '../../../../core/utils/app_snackbar.dart';
 import '../../../map/presentation/map_view.dart';
 import '../../data/models/ride_models.dart';
-import '../../data/repositories/ride_repository.dart';
 import '../../providers/ride_provider.dart';
 import '../location_search_screen.dart';
 
@@ -64,51 +63,73 @@ class _RideTabState extends ConsumerState<RideTab> {
     return 'assets/vehicle/car.png';
   }
 
+  void _showTripCompletedDialog(BuildContext context, RideModel ride) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: AppColors.success, size: 28),
+            Gap(10),
+            Text('Trip Completed! 🎉', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('You have safely reached your destination.', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+            const Gap(16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total Fare Paid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text('₹${ride.fare.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primary)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Done', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final rideState = ref.watch(rideProvider);
+
+    ref.listen(rideProvider, (previous, next) {
+      if (previous?.currentRide != null && next.currentRide == null) {
+        if (previous?.currentRide?.status == RideStatus.completed) {
+          _showTripCompletedDialog(context, previous!.currentRide!);
+        } else if (previous?.currentRide?.status == RideStatus.cancelled) {
+          AppSnackBar.showError(context, title: 'Ride Cancelled', message: 'The ride was cancelled.');
+        }
+      }
+    });
 
     return Scaffold(
       body: Stack(
         children: [
           // 1. Map View with markers and polyline route
           const MapViewWidget(),
-
-          // 2. Central Pickup Point Marker Pin (fixed to screen center - only show when no drop location selected)
-          if (rideState.dropLocation == null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 35),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 4))],
-                      ),
-                      child: const Text(
-                        'Pickup Point',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
-                    ),
-                    const Gap(4),
-                    Container(
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2.5),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
 
           // 3. Top Action Buttons (Re-center GPS Location & Notifications)
           SafeArea(
@@ -192,6 +213,7 @@ class _RideTabState extends ConsumerState<RideTab> {
   Widget _buildActiveRideContent(BuildContext context, RideState rideState, ScrollController scrollController) {
     final ride = rideState.currentRide!;
     final captain = ride.captain;
+    final liveUpdate = rideState.liveDriverLocation;
     final isSearching = ride.status == RideStatus.searching;
     final isArrived = ride.status == RideStatus.arrived;
     final isInProgress = ride.status == RideStatus.inProgress;
@@ -206,9 +228,12 @@ class _RideTabState extends ConsumerState<RideTab> {
     }
 
     String badgeText = '1 min away • 0.2 km';
+    if (liveUpdate != null && liveUpdate.speed > 0) {
+      badgeText = '${liveUpdate.speed.toStringAsFixed(1)} km/h • Live';
+    }
     Color badgeColor = AppColors.success;
     if (isInProgress) {
-      badgeText = 'Trip Active 🟢';
+      badgeText = liveUpdate != null && liveUpdate.speed > 0 ? 'Trip Active • ${liveUpdate.speed.toStringAsFixed(0)} km/h' : 'Trip Active 🟢';
       badgeColor = AppColors.primary;
     } else if (isArrived) {
       badgeText = 'Arrived 📍';
@@ -534,8 +559,8 @@ class _RideTabState extends ConsumerState<RideTab> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.my_location, color: Colors.green, size: 20),
-              const Gap(12),
+              const Icon(Icons.my_location, color: AppColors.primary, size: 20),
+              const Gap(10),
               Expanded(
                 child: Text(
                   rideState.pickupAddress ?? 'Fetching location...',
@@ -547,9 +572,9 @@ class _RideTabState extends ConsumerState<RideTab> {
             ],
           ),
         ),
-        const Gap(14),
+        const Gap(16),
 
-        // Where do you want to go? Search Card
+        // Main Search Bar Trigger
         GestureDetector(
           onTap: () {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocationSearchScreen()));
@@ -558,14 +583,14 @@ class _RideTabState extends ConsumerState<RideTab> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: AppColors.primary.withValues(alpha: 0.4), width: 1.5),
-              boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4))],
+              boxShadow: [BoxShadow(color: AppColors.primary.withValues(alpha: 0.06), blurRadius: 10, offset: const Offset(0, 4))],
             ),
             child: Row(
               children: [
                 const Icon(Icons.search, color: AppColors.primary, size: 24),
-                const Gap(14),
+                const Gap(12),
                 const Expanded(
                   child: Text(
                     'Where do you want to go?',
@@ -574,8 +599,8 @@ class _RideTabState extends ConsumerState<RideTab> {
                 ),
                 Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.arrow_forward, color: AppColors.primary, size: 16),
+                  decoration: const BoxDecoration(color: AppColors.primary, shape: BoxShape.circle),
+                  child: const Icon(Icons.arrow_forward, color: Colors.white, size: 16),
                 ),
               ],
             ),
@@ -584,86 +609,86 @@ class _RideTabState extends ConsumerState<RideTab> {
         const Gap(20),
 
         // Recent Places List Header
-        const Text(
-          'Recent Places',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Recent Destinations',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocationSearchScreen()));
+              },
+              child: const Text('View All', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+            ),
+          ],
         ),
-        const Gap(12),
+        const Gap(8),
 
-        // Recent Places List (Dynamic)
+        // Recent Places Async List
         recentPlacesAsync.when(
           data: (places) {
             if (places.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('No recent places found', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(14)),
+                child: const Row(
+                  children: [
+                    Icon(Icons.history, color: AppColors.textSecondary, size: 20),
+                    Gap(12),
+                    Text('No recent places yet. Search to get started!', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                  ],
+                ),
               );
             }
             return Column(
-              children: places.map((place) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _RecentPlaceTile(
-                    title: place.title,
-                    subtitle: place.subtitle,
-                    isFavorite: place.isFavorite,
-                    onFavoriteToggle: () async {
-                      final repo = ref.read(rideRepositoryProvider);
-                      await repo.toggleFavoriteRecentPlace(place.id, isFavorite: !place.isFavorite);
-                      ref.invalidate(recentPlacesProvider);
-                    },
+              children: places.take(3).map((place) {
+                return Card(
+                  elevation: 0,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    side: BorderSide(color: Colors.grey.shade200),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                    leading: const CircleAvatar(
+                      backgroundColor: AppColors.background,
+                      child: Icon(Icons.location_on_outlined, color: AppColors.primary, size: 20),
+                    ),
+                    title: Text(place.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text(
+                      place.subtitle,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     onTap: () {
-                      ref.read(rideProvider.notifier).setDropLocation(LatLng(place.lat, place.lng), place.title);
-                    },
-                    onDelete: () async {
-                      final repo = ref.read(rideRepositoryProvider);
-                      await repo.deleteRecentPlace(place.id);
-                      ref.invalidate(recentPlacesProvider);
+                      ref.read(rideProvider.notifier).setDropLocation(
+                            LatLng(place.lat, place.lng),
+                            '${place.title}, ${place.subtitle}',
+                          );
                     },
                   ),
                 );
               }).toList(),
             );
           },
-          loading: () => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          ),
-          error: (_, __) => const Text('Failed to load recent places', style: TextStyle(color: AppColors.error, fontSize: 12)),
-        ),
-        const Gap(20),
-
-        ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: AspectRatio(
-            aspectRatio: 16 / 7.5,
-            child: Image.asset(
-              'assets/images/home_screen_banner.png',
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
-                child: const Center(
-                  child: Text(
-                    'Special Ride Offers & Discounts',
-                    style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
+          error: (_, __) => const SizedBox.shrink(),
         ),
       ],
     );
   }
 
-  /// Rapido / Ola Style Vehicle Selection Bottom Sheet (Shown when drop location is selected)
+  /// Vehicle Selection Bottom Sheet (Bike, Auto, Cab)
   Widget _buildVehicleSelectionContent(BuildContext context, RideState rideState, ScrollController scrollController) {
+    final estimates = rideState.fareEstimates;
+
     return ListView(
       controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
         // Drag handle
         Center(
@@ -673,314 +698,164 @@ class _RideTabState extends ConsumerState<RideTab> {
             decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
           ),
         ),
-        const Gap(14),
+        const Gap(16),
 
-        // Route Summary Header with Change Destination button
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Column(
-            children: [
-              Row(
+        // Route Summary Header
+        Row(
+          children: [
+            const Icon(Icons.route, color: AppColors.primary, size: 22),
+            const Gap(10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.my_location, color: Colors.green, size: 18),
-                  const Gap(10),
-                  Expanded(
-                    child: Text(
-                      rideState.pickupAddress ?? 'Pickup Location',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  Text(
+                    'To: ${rideState.dropAddress ?? "Selected Location"}',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Gap(2),
+                  Text(
+                    'From: ${rideState.pickupAddress ?? "Pickup Location"}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
-              const Padding(
-                padding: EdgeInsets.only(left: 8.0, top: 4, bottom: 4),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(height: 12, child: VerticalDivider(color: Colors.grey, thickness: 2)),
-                ),
-              ),
-              Row(
-                children: [
-                  const Icon(Icons.location_on, color: AppColors.error, size: 18),
-                  const Gap(10),
-                  Expanded(
-                    child: Text(
-                      rideState.dropAddress ?? 'Drop Location',
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: AppColors.textPrimary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         const Gap(16),
 
-        // Vehicle Estimates List Header
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Available Rides',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+        // Available Vehicles List
+        if (rideState.isCalculatingFare)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  Gap(12),
+                  Text('Calculating fares & finding nearby captains...', style: TextStyle(color: AppColors.textSecondary)),
+                ],
+              ),
             ),
-            if (rideState.isCalculatingFare) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-          ],
-        ),
-        const Gap(12),
+          )
+        else if (estimates.isEmpty)
+          const Center(child: Text('No vehicles available right now.'))
+        else
+          Column(
+            children: estimates.map((estimate) {
+              final isSelected = rideState.selectedVehicleTypeId == estimate.vehicleTypeId;
 
-        // Vehicle Estimates Options (Rapido / Ola style)
-        if (rideState.fareEstimates.isEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(24),
-            alignment: Alignment.center,
-            child: rideState.isCalculatingFare
-                ? const CircularProgressIndicator(color: AppColors.primary)
-                : const Text('Calculating best fares for your route...', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-          ),
-        ] else ...[
-          ...rideState.fareEstimates.map((estimate) {
-            final isSelected = estimate.vehicleTypeId == rideState.selectedVehicleTypeId;
-            IconData iconData = Icons.two_wheeler;
-            if (estimate.rideType == RideType.auto) {
-              iconData = Icons.electric_rickshaw;
-            } else if (estimate.rideType == RideType.cab) {
-              iconData = Icons.local_taxi;
-            }
-
-            return GestureDetector(
-              onTap: () => ref.read(rideProvider.notifier).selectVehicle(estimate.vehicleTypeId ?? '', estimate.rideType, estimate.fare),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.primary.withValues(alpha: 0.08) : AppColors.background,
-                  border: Border.all(color: isSelected ? AppColors.primary : Colors.grey.shade300, width: isSelected ? 2 : 1),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary.withValues(alpha: 0.15) : Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Image.asset(
-                        _getVehicleImageAsset(estimate.vehicleTypeName),
-                        width: 38,
-                        height: 38,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(iconData, size: 28, color: isSelected ? AppColors.primary : AppColors.secondary),
-                      ),
+              return GestureDetector(
+                onTap: () {
+                  ref.read(rideProvider.notifier).selectVehicle(
+                        estimate.vehicleTypeId ?? '',
+                        estimate.rideType,
+                        estimate.fare,
+                      );
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.primary.withValues(alpha: 0.08) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isSelected ? AppColors.primary : Colors.grey.shade200,
+                      width: isSelected ? 2 : 1,
                     ),
-                    const Gap(14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                  child: Row(
+                    children: [
+                      Image.asset(
+                        _getVehicleImageAsset(estimate.vehicleTypeName),
+                        width: 50,
+                        height: 50,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.directions_car, size: 40, color: AppColors.primary),
+                      ),
+                      const Gap(16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  estimate.vehicleTypeName,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+                                ),
+                                const Gap(8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(6)),
+                                  child: Text(
+                                    '${estimate.etaMinutes} min away',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const Gap(4),
+                            Text(
+                              '${estimate.distanceKm.toStringAsFixed(1)} km • ${estimate.durationMinutes} min trip',
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                estimate.vehicleTypeName,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.textPrimary),
-                              ),
-                              const Gap(8),
-                              const Icon(Icons.person, size: 12, color: AppColors.textSecondary),
-                              Text(
-                                ' ${estimate.availableDrivers} nearby',
-                                style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                              ),
-                            ],
-                          ),
-                          const Gap(3),
                           Text(
-                            '${estimate.etaMinutes} mins away • Drop in ${estimate.durationMinutes} mins',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                            '₹${estimate.fare.toStringAsFixed(0)}',
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.textPrimary),
                           ),
                         ],
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '₹${estimate.fare.toInt()}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
-                        ),
-                        if (estimate.distanceKm > 0)
-                          Text(
-                            '${estimate.distanceKm.toStringAsFixed(1)} km',
-                            style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                          ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }),
-        ],
+              );
+            }).toList(),
+          ),
+
         const Gap(16),
 
-        // Promo Code Input Section
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.local_offer_outlined, color: AppColors.primary, size: 20),
-              const Gap(12),
-              Expanded(
-                child: TextField(
-                  controller: TextEditingController(text: rideState.promoCode),
-                  onChanged: (val) {
-                    ref.read(rideProvider.notifier).setPromoCode(val);
-                  },
-                  decoration: const InputDecoration(
-                    hintText: 'Enter promo code (e.g. RIDE50)',
-                    hintStyle: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-                ),
-              ),
-              if (rideState.promoCode != null && rideState.promoCode!.isNotEmpty)
-                TextButton(
-                  onPressed: () {
-                    ref.read(rideProvider.notifier).setPromoCode(null);
-                    AppSnackBar.showSuccess(context, title: 'Promo', message: 'Promo code removed');
-                  },
-                  child: const Text('Remove', style: TextStyle(color: AppColors.error, fontSize: 12)),
-                ),
-            ],
-          ),
-        ),
-        const Gap(20),
-
-        // Book Now Button
+        // Confirm Booking Button
         SizedBox(
           width: double.infinity,
           height: 52,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              elevation: 2,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 2,
             ),
             onPressed: rideState.isBooking
                 ? null
                 : () async {
                     final success = await ref.read(rideProvider.notifier).bookRide();
-                    if (context.mounted && success) {
-                      final currentRide = ref.read(rideProvider).currentRide;
-                      AppSnackBar.showSuccess(
+                    if (context.mounted && !success) {
+                      AppSnackBar.showError(
                         context,
-                        title: 'Ride Requested',
-                        message: 'Ride #${currentRide?.rideId ?? ""} requested! Searching for nearby captain...',
+                        title: 'Booking Failed',
+                        message: rideState.errorMessage ?? 'Failed to book ride. Please try again.',
                       );
-                    } else if (context.mounted && rideState.errorMessage != null) {
-                      AppSnackBar.showError(context, title: 'Booking Failed', message: rideState.errorMessage!);
                     }
                   },
             child: rideState.isBooking
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
-                    'Book ${rideState.selectedRideType.name.toUpperCase()} (₹${rideState.estimatedFare.toInt()})',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                    'Book ${rideState.selectedRideType.name.toUpperCase()} (₹${rideState.estimatedFare.toStringAsFixed(0)})',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _RecentPlaceTile extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final bool isFavorite;
-  final VoidCallback onTap;
-  final VoidCallback onFavoriteToggle;
-  final VoidCallback onDelete;
-
-  const _RecentPlaceTile({
-    required this.title,
-    required this.subtitle,
-    required this.isFavorite,
-    required this.onTap,
-    required this.onFavoriteToggle,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(14)),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle),
-              child: const Icon(Icons.history, color: AppColors.textSecondary, size: 20),
-            ),
-            const Gap(12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const Gap(2),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              icon: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.red : Colors.grey, size: 20),
-              onPressed: onFavoriteToggle,
-              constraints: const BoxConstraints(),
-              padding: const EdgeInsets.all(4),
-            ),
-            const Gap(4),
-            IconButton(
-              icon: const Icon(Icons.close, color: Colors.grey, size: 18),
-              onPressed: onDelete,
-              constraints: const BoxConstraints(),
-              padding: const EdgeInsets.all(4),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
