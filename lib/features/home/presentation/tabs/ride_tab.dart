@@ -44,11 +44,7 @@ class _RideTabState extends ConsumerState<RideTab> {
       ref.read(rideProvider.notifier).updatePickupFromCoordinates(userLatLng);
     } else {
       if (mounted) {
-        AppSnackBar.showError(
-          context,
-          title: 'Location Notice',
-          message: 'Could not fetch current GPS location. Please ensure GPS is enabled.',
-        );
+        AppSnackBar.showError(context, title: 'Location Notice', message: 'Could not fetch current GPS location. Please ensure GPS is enabled.');
       }
       ref.read(rideProvider.notifier).updatePickupFromCoordinates(const LatLng(20.2961, 85.8245));
     }
@@ -89,7 +85,10 @@ class _RideTabState extends ConsumerState<RideTab> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Total Fare Paid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text('₹${ride.fare.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primary)),
+                  Text(
+                    '₹${ride.fare.toStringAsFixed(0)}',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primary),
+                  ),
                 ],
               ),
             ),
@@ -104,7 +103,10 @@ class _RideTabState extends ConsumerState<RideTab> {
             onPressed: () {
               Navigator.pop(dialogContext);
             },
-            child: const Text('Done', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Done',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
@@ -620,7 +622,10 @@ class _RideTabState extends ConsumerState<RideTab> {
               onPressed: () {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocationSearchScreen()));
               },
-              child: const Text('View All', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+              child: const Text(
+                'View All',
+                style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 13),
+              ),
             ),
           ],
         ),
@@ -665,18 +670,37 @@ class _RideTabState extends ConsumerState<RideTab> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     onTap: () {
-                      ref.read(rideProvider.notifier).setDropLocation(
-                            LatLng(place.lat, place.lng),
-                            '${place.title}, ${place.subtitle}',
-                          );
+                      ref.read(rideProvider.notifier).setDropLocation(LatLng(place.lat, place.lng), '${place.title}, ${place.subtitle}');
                     },
                   ),
                 );
               }).toList(),
             );
           },
-          loading: () => const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator())),
+          loading: () => const Center(
+            child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()),
+          ),
           error: (_, __) => const SizedBox.shrink(),
+        ),
+        const Gap(16),
+
+        // Promotional Banner Below Recent Destinations
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.asset(
+            'assets/images/home_screen_banner.png',
+            width: double.infinity,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+              child: const Center(
+                child: Text(
+                  'Special Ride Offers & Discounts',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -752,11 +776,7 @@ class _RideTabState extends ConsumerState<RideTab> {
 
               return GestureDetector(
                 onTap: () {
-                  ref.read(rideProvider.notifier).selectVehicle(
-                        estimate.vehicleTypeId ?? '',
-                        estimate.rideType,
-                        estimate.fare,
-                      );
+                  ref.read(rideProvider.notifier).selectVehicle(estimate.vehicleTypeId ?? '', estimate.rideType, estimate.fare);
                 },
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -764,10 +784,7 @@ class _RideTabState extends ConsumerState<RideTab> {
                   decoration: BoxDecoration(
                     color: isSelected ? AppColors.primary.withValues(alpha: 0.08) : Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected ? AppColors.primary : Colors.grey.shade200,
-                      width: isSelected ? 2 : 1,
-                    ),
+                    border: Border.all(color: isSelected ? AppColors.primary : Colors.grey.shade200, width: isSelected ? 2 : 1),
                   ),
                   child: Row(
                     children: [
