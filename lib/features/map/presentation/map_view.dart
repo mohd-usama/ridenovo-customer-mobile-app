@@ -84,56 +84,50 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
     }
   }
 
-  Future<BitmapDescriptor> _createPickupMarkerIcon({double scale = 2.5}) async {
+  Future<BitmapDescriptor> _createPickupMarkerIcon({double fontSize = 14.0}) async {
     final pictureRecorder = PictureRecorder();
     final canvas = Canvas(pictureRecorder);
 
-    final double pillWidth = 120.0 * scale;
-    final double pillHeight = 34.0 * scale;
-    final double dotSize = 12.0 * scale;
-    final double gap = 4.0 * scale;
-    final double totalWidth = 140.0 * scale;
-    final double totalHeight = pillHeight + gap + dotSize + 4.0 * scale;
-
-    // 1. Draw Shadow
-    final shadowPaint = Paint()
-      ..color = const Color(0x40000000)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 3.0 * scale);
-    final pillRRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH((totalWidth - pillWidth) / 2, 2 * scale, pillWidth, pillHeight),
-      Radius.circular(17 * scale),
-    );
-    canvas.drawRRect(pillRRect.shift(Offset(0, 2 * scale)), shadowPaint);
-
-    // 2. Draw Green Pill
-    final pillPaint = Paint()
-      ..color = const Color(0xFF10B981) // Green success color
-      ..style = PaintingStyle.fill;
-    canvas.drawRRect(pillRRect, pillPaint);
-
-    // 3. Draw Text "Pickup Point" inside the pill
     final textPainter = TextPainter(
       text: TextSpan(
         text: 'Pickup Point',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 13.0 * scale,
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold, letterSpacing: 0.2),
       ),
       textDirection: TextDirection.ltr,
     );
     textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset(
-        (totalWidth - textPainter.width) / 2,
-        (pillHeight - textPainter.height) / 2 + (2 * scale),
-      ),
+
+    const double horizontalPadding = 12.0;
+    const double verticalPadding = 6.0;
+    final double pillWidth = textPainter.width + (horizontalPadding * 2);
+    final double pillHeight = textPainter.height + (verticalPadding * 2);
+    const double dotSize = 10.0;
+    const double gap = 4.0;
+    final double totalWidth = pillWidth + 8.0;
+    final double totalHeight = pillHeight + gap + dotSize + 4.0;
+
+    // 1. Draw Shadow
+    final shadowPaint = Paint()
+      ..color = const Color(0x33000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3.0);
+    final pillRRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH((totalWidth - pillWidth) / 2, 2, pillWidth, pillHeight),
+      Radius.circular(pillHeight / 2),
     );
+    canvas.drawRRect(pillRRect.shift(const Offset(0, 2)), shadowPaint);
+
+    // 2. Draw Green Pill
+    final pillPaint = Paint()
+      ..color =
+          const Color(0xFF10B981) // Green success color
+      ..style = PaintingStyle.fill;
+    canvas.drawRRect(pillRRect, pillPaint);
+
+    // 3. Draw Text "Pickup Point" inside the pill
+    textPainter.paint(canvas, Offset((totalWidth - textPainter.width) / 2, 2 + verticalPadding));
 
     // 4. Draw Dot at bottom
-    final dotCenter = Offset(totalWidth / 2, pillHeight + gap + (dotSize / 2));
+    final dotCenter = Offset(totalWidth / 2, 2 + pillHeight + gap + (dotSize / 2));
     final dotPaint = Paint()
       ..color = const Color(0xFF10B981)
       ..style = PaintingStyle.fill;
@@ -142,13 +136,10 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
     final whiteBorderPaint = Paint()
       ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5 * scale;
-    canvas.drawCircle(dotCenter, dotSize / 2 - (1.0 * scale), whiteBorderPaint);
+      ..strokeWidth = 2.0;
+    canvas.drawCircle(dotCenter, dotSize / 2 - 0.5, whiteBorderPaint);
 
-    final image = await pictureRecorder.endRecording().toImage(
-      totalWidth.toInt(),
-      totalHeight.toInt(),
-    );
+    final image = await pictureRecorder.endRecording().toImage(totalWidth.toInt(), totalHeight.toInt());
     final ByteData? byteData = await image.toByteData(format: ImageByteFormat.png);
     if (byteData == null) return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
     return BitmapDescriptor.bytes(byteData.buffer.asUint8List());
@@ -238,7 +229,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
     if (activeRide != null) {
       // Active Ride Mode: Show assigned driver aerial icon and pickup/drop (and route)
       final captain = activeRide.captain;
-      final driverPos = _animatedDriverPos ?? (captain != null && captain.currentLat != null ? LatLng(captain.currentLat!, captain.currentLng!) : null);
+      final driverPos =
+          _animatedDriverPos ?? (captain != null && captain.currentLat != null ? LatLng(captain.currentLat!, captain.currentLng!) : null);
 
       if (driverPos != null) {
         BitmapDescriptor assignedIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
