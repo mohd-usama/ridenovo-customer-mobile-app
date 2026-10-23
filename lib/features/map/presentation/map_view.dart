@@ -151,6 +151,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
       final autoIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(42, 42)), 'assets/arial_images/auto_ariel.png');
       final carIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(42, 42)), 'assets/arial_images/car_ariel.png');
       final pickupIcon = await _createPickupMarkerIcon();
+      final pickupPinIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(48, 48)), 'assets/mapPins/p.png');
+      final dropPinIcon = await BitmapDescriptor.asset(const ImageConfiguration(size: Size(48, 48)), 'assets/mapPins/d.png');
 
       if (mounted) {
         setState(() {
@@ -158,6 +160,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
           _customIcons['auto'] = autoIcon;
           _customIcons['car'] = carIcon;
           _customIcons['pickup'] = pickupIcon;
+          _customIcons['pickup_pin'] = pickupPinIcon;
+          _customIcons['drop_pin'] = dropPinIcon;
         });
       }
     } catch (_) {}
@@ -261,7 +265,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
           Marker(
             markerId: const MarkerId('drop_location'),
             position: LatLng(activeRide.dropLat, activeRide.dropLng),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            icon: _customIcons['drop_pin'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            anchor: const Offset(0.5, 1.0),
             infoWindow: const InfoWindow(title: 'Destination', snippet: 'Trip destination'),
           ),
         );
@@ -270,8 +275,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
           Marker(
             markerId: const MarkerId('pickup_location'),
             position: LatLng(activeRide.pickupLat, activeRide.pickupLng),
-            icon: _customIcons['pickup'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-            anchor: _customIcons.containsKey('pickup') ? const Offset(0.5, 1.0) : const Offset(0.5, 0.5),
+            icon: _customIcons['pickup_pin'] ?? _customIcons['pickup'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            anchor: const Offset(0.5, 1.0),
             infoWindow: const InfoWindow(title: 'Pickup Location', snippet: 'Your ride pickup'),
           ),
         );
@@ -282,7 +287,7 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
           Polyline(
             polylineId: const PolylineId('active_ride_route'),
             points: rideState.polylinePoints,
-            color: const Color(0xFF007AFF), // Vibrant blue route
+            color: const Color(0xFFFF9500), // Amber / Orange route
             width: 5,
             startCap: Cap.roundCap,
             endCap: Cap.roundCap,
@@ -296,8 +301,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
           Marker(
             markerId: const MarkerId('pickup'),
             position: rideState.pickupLocation!,
-            icon: _customIcons['pickup'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-            anchor: _customIcons.containsKey('pickup') ? const Offset(0.5, 1.0) : const Offset(0.5, 0.5),
+            icon: _customIcons['pickup_pin'] ?? _customIcons['pickup'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            anchor: const Offset(0.5, 1.0),
             infoWindow: InfoWindow(title: 'Pickup Point 📍', snippet: rideState.pickupAddress ?? 'Your Pickup Location'),
           ),
         );
@@ -308,7 +313,8 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
           Marker(
             markerId: const MarkerId('drop'),
             position: rideState.dropLocation!,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            icon: _customIcons['drop_pin'] ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            anchor: const Offset(0.5, 1.0),
             infoWindow: const InfoWindow(title: 'Drop Location'),
           ),
         );
@@ -339,7 +345,7 @@ class _MapViewWidgetState extends ConsumerState<MapViewWidget> with SingleTicker
       }
 
       if (rideState.polylinePoints.isNotEmpty) {
-        polylines.add(Polyline(polylineId: const PolylineId('route'), points: rideState.polylinePoints, color: Colors.black, width: 5));
+        polylines.add(Polyline(polylineId: const PolylineId('route'), points: rideState.polylinePoints, color: const Color(0xFFFF9500), width: 5));
       }
     }
 

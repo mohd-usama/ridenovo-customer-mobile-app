@@ -5,16 +5,9 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/app_snackbar.dart';
 import '../../data/models/ride_models.dart';
-import '../../data/repositories/ride_repository.dart';
-
-final rideHistoryProvider = FutureProvider.family<RideHistoryResponse, String>((ref, type) async {
-  final repo = ref.watch(rideRepositoryProvider);
-  final response = await repo.getRideHistory(type: type);
-  if (response.isSuccess && response.data != null) {
-    return response.data!;
-  }
-  return RideHistoryResponse(rides: [], totalRides: 0, currentPage: 1, totalPages: 1, limit: 10);
-});
+import '../../providers/ride_provider.dart';
+import '../spending_summary_screen.dart';
+import '../support/create_ticket_screen.dart';
 
 class MyRidesTab extends ConsumerStatefulWidget {
   const MyRidesTab({super.key});
@@ -30,6 +23,19 @@ class _MyRidesTabState extends ConsumerState<MyRidesTab> with SingleTickerProvid
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        if (_tabController.index == 0) {
+          ref.invalidate(rideHistoryProvider('complete'));
+        } else if (_tabController.index == 1) {
+          ref.invalidate(rideHistoryProvider('cancel'));
+        }
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(rideHistoryProvider('complete'));
+      ref.invalidate(rideHistoryProvider('cancel'));
+    });
   }
 
   @override
@@ -60,6 +66,17 @@ class _MyRidesTabState extends ConsumerState<MyRidesTab> with SingleTickerProvid
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.analytics_outlined, color: AppColors.primary),
+            tooltip: 'Spending Summary',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SpendingSummaryScreen()),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
@@ -266,11 +283,34 @@ class _RidesList extends StatelessWidget {
                     '₹${ride.fare.toInt()}',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                   ),
-                  TextButton(
-                    onPressed: () {
-                      AppSnackBar.showSuccess(context, title: 'Ride Details', message: 'Trip ID: ${ride.tripId.isNotEmpty ? ride.tripId : ride.id}');
-                    },
-                    child: const Text('View Details >', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          side: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        icon: const Icon(Icons.report_problem_outlined, size: 14, color: AppColors.textSecondary),
+                        label: const Text('Report Issue', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => CreateTicketScreen(
+                                rideId: ride.tripId.isNotEmpty ? ride.tripId : ride.id,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const Gap(8),
+                      TextButton(
+                        onPressed: () {
+                          AppSnackBar.showSuccess(context, title: 'Ride Details', message: 'Trip ID: ${ride.tripId.isNotEmpty ? ride.tripId : ride.id}');
+                        },
+                        child: const Text('View Details >', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ),
                 ],
               ),

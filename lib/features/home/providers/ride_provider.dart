@@ -19,13 +19,21 @@ class RideState {
   final RideType selectedRideType;
   final String? selectedVehicleTypeId;
   final String? promoCode;
+  final double appliedDiscount;
   final double estimatedFare;
   final List<FareEstimateModel> fareEstimates;
   final List<LocationSuggestionModel> locationSuggestions;
   final List<LatLng> polylinePoints;
   final List<NearbyDriverModel> nearbyDrivers;
   final RideModel? currentRide;
+  final RideModel? completedRide;
   final DriverLocationUpdate? liveDriverLocation;
+  final String selectedPaymentMethod;
+  final bool isBookingForSomeoneElse;
+  final String? passengerName;
+  final String? passengerPhone;
+  final String? passengerRelation;
+  final List<SavedPassengerModel> savedPassengers;
   final bool isSearchingLocation;
   final bool isCalculatingFare;
   final bool isBooking;
@@ -39,13 +47,21 @@ class RideState {
     this.selectedRideType = RideType.bike,
     this.selectedVehicleTypeId,
     this.promoCode,
+    this.appliedDiscount = 0.0,
     this.estimatedFare = 0.0,
     this.fareEstimates = const [],
     this.locationSuggestions = const [],
     this.polylinePoints = const [],
     this.nearbyDrivers = const [],
     this.currentRide,
+    this.completedRide,
     this.liveDriverLocation,
+    this.selectedPaymentMethod = 'cash',
+    this.isBookingForSomeoneElse = false,
+    this.passengerName,
+    this.passengerPhone,
+    this.passengerRelation = 'Friend',
+    this.savedPassengers = const [],
     this.isSearchingLocation = false,
     this.isCalculatingFare = false,
     this.isBooking = false,
@@ -62,6 +78,7 @@ class RideState {
     String? selectedVehicleTypeId,
     String? promoCode,
     bool clearPromo = false,
+    double? appliedDiscount,
     double? estimatedFare,
     List<FareEstimateModel>? fareEstimates,
     List<LocationSuggestionModel>? locationSuggestions,
@@ -69,8 +86,17 @@ class RideState {
     List<NearbyDriverModel>? nearbyDrivers,
     RideModel? currentRide,
     bool clearCurrentRide = false,
+    RideModel? completedRide,
+    bool clearCompletedRide = false,
     DriverLocationUpdate? liveDriverLocation,
     bool clearLiveDriverLocation = false,
+    String? selectedPaymentMethod,
+    bool? isBookingForSomeoneElse,
+    String? passengerName,
+    String? passengerPhone,
+    String? passengerRelation,
+    bool clearPassenger = false,
+    List<SavedPassengerModel>? savedPassengers,
     bool? isSearchingLocation,
     bool? isCalculatingFare,
     bool? isBooking,
@@ -85,13 +111,21 @@ class RideState {
       selectedRideType: selectedRideType ?? this.selectedRideType,
       selectedVehicleTypeId: clearCurrentRide ? null : (selectedVehicleTypeId ?? this.selectedVehicleTypeId),
       promoCode: clearPromo ? null : (promoCode ?? this.promoCode),
+      appliedDiscount: clearPromo ? 0.0 : (appliedDiscount ?? this.appliedDiscount),
       estimatedFare: estimatedFare ?? this.estimatedFare,
       fareEstimates: fareEstimates ?? this.fareEstimates,
       locationSuggestions: locationSuggestions ?? this.locationSuggestions,
       polylinePoints: clearDropLocation ? [] : (polylinePoints ?? this.polylinePoints),
       nearbyDrivers: nearbyDrivers ?? this.nearbyDrivers,
       currentRide: clearCurrentRide ? null : (currentRide ?? this.currentRide),
+      completedRide: clearCompletedRide ? null : (completedRide ?? this.completedRide),
       liveDriverLocation: clearLiveDriverLocation ? null : (liveDriverLocation ?? this.liveDriverLocation),
+      selectedPaymentMethod: selectedPaymentMethod ?? this.selectedPaymentMethod,
+      isBookingForSomeoneElse: isBookingForSomeoneElse ?? this.isBookingForSomeoneElse,
+      passengerName: clearPassenger ? null : (passengerName ?? this.passengerName),
+      passengerPhone: clearPassenger ? null : (passengerPhone ?? this.passengerPhone),
+      passengerRelation: clearPassenger ? 'Friend' : (passengerRelation ?? this.passengerRelation),
+      savedPassengers: savedPassengers ?? this.savedPassengers,
       isSearchingLocation: isSearchingLocation ?? this.isSearchingLocation,
       isCalculatingFare: isCalculatingFare ?? this.isCalculatingFare,
       isBooking: isBooking ?? this.isBooking,
@@ -100,15 +134,32 @@ class RideState {
   }
 }
 
+final rideHistoryProvider = FutureProvider.family<RideHistoryResponse, String>((ref, type) async {
+  final repo = ref.watch(rideRepositoryProvider);
+  final response = await repo.getRideHistory(type: type);
+  if (response.isSuccess && response.data != null) {
+    return response.data!;
+  }
+  return RideHistoryResponse(rides: [], totalRides: 0, currentPage: 1, totalPages: 1, limit: 10);
+});
+
 class RideNotifier extends StateNotifier<RideState> {
   final RideRepository _rideRepository;
   final SocketService _socketService;
+  final Ref _ref;
   StreamSubscription? _locationSubscription;
   StreamSubscription? _statusSubscription;
+  final Set<String> _handledCompletedRideIds = {};
 
-  RideNotifier(this._rideRepository, this._socketService) : super(const RideState()) {
+  RideNotifier(this._rideRepository, this._socketService, this._ref) : super(const RideState()) {
     _initSocketListeners();
     checkActiveRideOnStartup();
+  }
+
+  void _invalidateRideHistory() {
+    _ref.invalidate(rideHistoryProvider('complete'));
+    _ref.invalidate(rideHistoryProvider('cancel'));
+    _ref.invalidate(rideHistoryProvider('all'));
   }
 
   void _initSocketListeners() {
@@ -166,26 +217,72 @@ class RideNotifier extends StateNotifier<RideState> {
 
     _statusSubscription = _socketService.rideStatusUpdates.listen((data) {
       print('🔄 [RideNotifier] Ride status update: $data');
-      final rideId = data['rideId']?.toString() ?? state.currentRide?.rideId ?? '';
-      final statusStr = data['status']?.toString().toLowerCase() ?? '';
-      final otpCode = data['otp']?.toString() ?? data['otp_code']?.toString();
+      final rideId = data['rideId']?.toString() ?? data['id']?.toString() ?? state.currentRide?.rideId ?? '';
 
-      RideStatus parsedStatus = state.currentRide?.status ?? RideStatus.searching;
-      if (statusStr.contains('accept')) {
-        parsedStatus = RideStatus.accepted;
-      } else if (statusStr.contains('arrive')) {
-        parsedStatus = RideStatus.arrived;
-      } else if (statusStr.contains('progress') || statusStr.contains('ongoing') || statusStr.contains('start')) {
-        parsedStatus = RideStatus.inProgress;
-      } else if (statusStr.contains('complete') || statusStr.contains('finish') || statusStr.contains('end')) {
-        parsedStatus = RideStatus.completed;
-      } else if (statusStr.contains('cancel')) {
-        parsedStatus = RideStatus.cancelled;
+      final rideData = data['ride'] is Map<String, dynamic>
+          ? data['ride'] as Map<String, dynamic>
+          : (data['data'] is Map<String, dynamic> ? data['data'] as Map<String, dynamic> : data);
+
+      final rawStatus =
+          rideData['status']?.toString() ??
+          rideData['step']?.toString() ??
+          rideData['state']?.toString() ??
+          rideData['ride_status']?.toString() ??
+          data['status']?.toString() ??
+          data['step']?.toString() ??
+          data['state']?.toString() ??
+          data['event']?.toString() ??
+          data['type']?.toString();
+      final otpCode = rideData['otp']?.toString() ?? rideData['otp_code']?.toString() ?? data['otp']?.toString() ?? data['otp_code']?.toString();
+
+      final parsedStatus = parseRideStatus(rawStatus);
+
+      // Guard: ignore events meant for a different ride
+      if (state.currentRide != null && rideId.isNotEmpty && state.currentRide!.rideId.isNotEmpty && rideId != state.currentRide!.rideId) {
+        print("⚠️ [RideNotifier] Status update for $rideId ignored because active ride is ${state.currentRide!.rideId}");
+        return;
       }
 
-      if (parsedStatus == RideStatus.completed || parsedStatus == RideStatus.cancelled) {
+      if (parsedStatus == RideStatus.completed) {
         _socketService.leaveRide(rideId);
         stopActiveRidePolling();
+        _invalidateRideHistory();
+        if (_handledCompletedRideIds.contains(rideId)) {
+          print('⚠️ [Socket] Completion for $rideId already handled. Ignoring repeat trigger.');
+          state = state.copyWith(clearCurrentRide: true);
+          return;
+        }
+        _handledCompletedRideIds.add(rideId);
+        print('🎉 [Socket] Ride completed! Setting completedRide & clearing currentRide.');
+        final completedModel =
+            state.currentRide ??
+            RideModel(
+              rideId: rideId,
+              status: RideStatus.completed,
+              pickupAddress: state.pickupAddress ?? '',
+              pickupLat: state.pickupLocation?.latitude ?? 0,
+              pickupLng: state.pickupLocation?.longitude ?? 0,
+              dropAddress: state.dropAddress ?? '',
+              dropLat: state.dropLocation?.latitude ?? 0,
+              dropLng: state.dropLocation?.longitude ?? 0,
+              rideType: state.selectedRideType,
+              fare: state.estimatedFare,
+            );
+        state = state.copyWith(
+          clearCurrentRide: true,
+          completedRide: completedModel,
+          clearDropLocation: true,
+          clearPromo: true,
+          clearLiveDriverLocation: true,
+          fareEstimates: [],
+          nearbyDrivers: [],
+          polylinePoints: [],
+        );
+      } else if (parsedStatus == RideStatus.cancelled) {
+        print('❌ [Socket] Ride cancelled! Clearing state.');
+        _socketService.leaveRide(rideId);
+        stopActiveRidePolling();
+        _invalidateRideHistory();
         state = state.copyWith(
           clearCurrentRide: true,
           clearDropLocation: true,
@@ -227,6 +324,9 @@ class RideNotifier extends StateNotifier<RideState> {
       final ride = response.data!;
       print('🚀 [Startup Check] Found active ride: #${ride.rideId}, status: ${ride.status}');
       if (ride.status == RideStatus.completed || ride.status == RideStatus.cancelled) {
+        if (ride.status == RideStatus.completed) {
+          _handledCompletedRideIds.add(ride.rideId);
+        }
         state = state.copyWith(
           clearCurrentRide: true,
           clearDropLocation: true,
@@ -338,8 +438,64 @@ class RideNotifier extends StateNotifier<RideState> {
     state = state.copyWith(selectedVehicleTypeId: vehicleTypeId, selectedRideType: type, estimatedFare: fare);
   }
 
-  void setPromoCode(String? code) {
-    state = state.copyWith(promoCode: code);
+  void setPromoCode(String? code, {double discount = 0.0}) {
+    if (code == null || code.trim().isEmpty) {
+      state = state.copyWith(clearPromo: true, appliedDiscount: 0.0);
+    } else {
+      state = state.copyWith(promoCode: code, appliedDiscount: discount);
+    }
+  }
+
+  void setPaymentMethod(String method) {
+    state = state.copyWith(selectedPaymentMethod: method);
+  }
+
+  void setBookingForSomeoneElse({
+    required bool isForSomeoneElse,
+    String? name,
+    String? phone,
+    String? relation,
+  }) {
+    if (!isForSomeoneElse) {
+      state = state.copyWith(
+        isBookingForSomeoneElse: false,
+        clearPassenger: true,
+      );
+    } else {
+      state = state.copyWith(
+        isBookingForSomeoneElse: true,
+        passengerName: name,
+        passengerPhone: phone,
+        passengerRelation: relation ?? 'Friend',
+      );
+    }
+  }
+
+  Future<void> fetchSavedPassengers() async {
+    final response = await _rideRepository.getSavedPassengers();
+    if (response.isSuccess && response.data != null) {
+      state = state.copyWith(savedPassengers: response.data);
+    }
+  }
+
+  Future<bool> addSavedPassenger(SavedPassengerModel passenger) async {
+    final response = await _rideRepository.addSavedPassenger(passenger);
+    if (response.isSuccess && response.data != null) {
+      final updatedList = [...state.savedPassengers, response.data!];
+      state = state.copyWith(savedPassengers: updatedList);
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> deleteSavedPassenger(String id) async {
+    final response = await _rideRepository.deleteSavedPassenger(id);
+    if (response.isSuccess) {
+      final updatedList = state.savedPassengers.where((p) => p.id != id).toList();
+      state = state.copyWith(savedPassengers: updatedList);
+      return true;
+    }
+    return false;
   }
 
   /// Search locations for autocomplete
@@ -437,7 +593,7 @@ class RideNotifier extends StateNotifier<RideState> {
   }
 
   /// Send ride booking request to API
-  Future<bool> bookRide() async {
+  Future<bool> bookRide({String? favoriteDriverId}) async {
     if (state.pickupLocation == null || state.dropLocation == null) {
       state = state.copyWith(errorMessage: 'Please select both pickup and drop location.');
       return false;
@@ -449,6 +605,8 @@ class RideNotifier extends StateNotifier<RideState> {
         state.fareEstimates.where((e) => e.vehicleTypeId == state.selectedVehicleTypeId).firstOrNull ?? state.fareEstimates.firstOrNull;
     final vehicleTypeId = match?.vehicleTypeId ?? 'c3fbfe46-b6b8-43d7-bb25-ab77582b1897';
 
+    final netFare = (state.estimatedFare - state.appliedDiscount).clamp(0.0, 999999.0);
+
     final request = BookRideRequest(
       vehicleTypeId: vehicleTypeId,
       pickupAddress: state.pickupAddress ?? 'Pickup Location',
@@ -457,8 +615,17 @@ class RideNotifier extends StateNotifier<RideState> {
       dropAddress: state.dropAddress ?? 'Drop Location',
       dropLat: state.dropLocation!.latitude,
       dropLng: state.dropLocation!.longitude,
-      paymentMethod: 'cash',
+      paymentMethod: state.selectedPaymentMethod,
       promoCode: state.promoCode,
+      favoriteDriverId: favoriteDriverId,
+      fare: netFare,
+      finalFare: netFare,
+      originalFare: state.estimatedFare,
+      isForSomeoneElse: state.isBookingForSomeoneElse,
+      passengerName: state.passengerName,
+      passengerPhone: state.passengerPhone,
+      passengerRelation: state.passengerRelation,
+      sendSmsToPassenger: true,
     );
 
     final response = await _rideRepository.bookRide(request);
@@ -482,41 +649,97 @@ class RideNotifier extends StateNotifier<RideState> {
       print('🚀 [Polling] Checking active ride status...');
       final response = await _rideRepository.getActiveRide();
 
-      if (response.isSuccess && response.data != null) {
-        final ride = response.data!;
+      if (response.isSuccess) {
+        if (response.data != null) {
+          final ride = response.data!;
 
-        if (ride.status == RideStatus.completed || ride.status == RideStatus.cancelled) {
-          print('🚀 [Polling] Ride completed or cancelled. Clearing state.');
-          _socketService.leaveRide(ride.rideId);
-          stopActiveRidePolling();
-          state = state.copyWith(
-            clearCurrentRide: true,
-            clearDropLocation: true,
-            clearPromo: true,
-            clearLiveDriverLocation: true,
-            fareEstimates: [],
-            nearbyDrivers: [],
-            polylinePoints: [],
-          );
-        } else {
-          List<LatLng> points = state.polylinePoints;
-          if (ride.routePoints.isNotEmpty) {
-            points = ride.routePoints;
+          // Guard: ignore if polled ride ID does not match current active ride
+          if (state.currentRide != null &&
+              ride.rideId.isNotEmpty &&
+              state.currentRide!.rideId.isNotEmpty &&
+              ride.rideId != state.currentRide!.rideId) {
+            print('⚠️ [Polling] Stale ride ID (${ride.rideId}) != active ride (${state.currentRide!.rideId}). Ignoring.');
+            return;
           }
-          state = state.copyWith(currentRide: ride, polylinePoints: points);
+
+          if (ride.status == RideStatus.completed) {
+            _socketService.leaveRide(ride.rideId);
+            stopActiveRidePolling();
+            _invalidateRideHistory();
+            if (_handledCompletedRideIds.contains(ride.rideId)) {
+              print('⚠️ [Polling] Completion for ${ride.rideId} already handled. Ignoring repeat trigger.');
+              state = state.copyWith(clearCurrentRide: true);
+              return;
+            }
+            _handledCompletedRideIds.add(ride.rideId);
+            print('🎉 [Polling] Ride completed. Setting completedRide & clearing state.');
+            state = state.copyWith(
+              clearCurrentRide: true,
+              completedRide: ride,
+              clearDropLocation: true,
+              clearPromo: true,
+              clearLiveDriverLocation: true,
+              fareEstimates: [],
+              nearbyDrivers: [],
+              polylinePoints: [],
+            );
+          } else if (ride.status == RideStatus.cancelled) {
+            print('❌ [Polling] Ride cancelled (${ride.status}). Clearing state.');
+            _socketService.leaveRide(ride.rideId);
+            stopActiveRidePolling();
+            _invalidateRideHistory();
+            state = state.copyWith(
+              clearCurrentRide: true,
+              clearDropLocation: true,
+              clearPromo: true,
+              clearLiveDriverLocation: true,
+              fareEstimates: [],
+              nearbyDrivers: [],
+              polylinePoints: [],
+            );
+          } else {
+            List<LatLng> points = state.polylinePoints;
+            if (ride.routePoints.isNotEmpty) {
+              points = ride.routePoints;
+            }
+            state = state.copyWith(currentRide: ride, polylinePoints: points);
+          }
+        } else {
+          // If backend returns no active ride (null) and we currently have a ride in state
+          if (state.currentRide != null) {
+            final active = state.currentRide!;
+            _socketService.leaveRide(active.rideId);
+            stopActiveRidePolling();
+            _invalidateRideHistory();
+
+            if (active.status == RideStatus.inProgress || active.status == RideStatus.arrived) {
+              print('🎉 [Polling] In-progress ride concluded on backend. Setting completedRide.');
+              state = state.copyWith(
+                clearCurrentRide: true,
+                completedRide: active,
+                clearDropLocation: true,
+                clearPromo: true,
+                clearLiveDriverLocation: true,
+                fareEstimates: [],
+                nearbyDrivers: [],
+                polylinePoints: [],
+              );
+            } else {
+              print('🚀 [Polling] Active ride cancelled/removed on backend. Clearing state.');
+              state = state.copyWith(
+                clearCurrentRide: true,
+                clearDropLocation: true,
+                clearPromo: true,
+                clearLiveDriverLocation: true,
+                fareEstimates: [],
+                nearbyDrivers: [],
+                polylinePoints: [],
+              );
+            }
+          }
         }
       } else {
-        print('🚀 [Polling] No active ride found or error. Clearing state.');
-        stopActiveRidePolling();
-        state = state.copyWith(
-          clearCurrentRide: true,
-          clearDropLocation: true,
-          clearPromo: true,
-          clearLiveDriverLocation: true,
-          fareEstimates: [],
-          nearbyDrivers: [],
-          polylinePoints: [],
-        );
+        print('⚠️ [Polling] Active ride check transient error (${response.message}). Retrying in next cycle...');
       }
     });
   }
@@ -526,12 +749,20 @@ class RideNotifier extends StateNotifier<RideState> {
     _pollingTimer = null;
   }
 
-  Future<bool> cancelActiveRide(String rideId) async {
+  Future<bool> cancelActiveRide(String rideId, {String reason = 'Changed my mind'}) async {
     print('🚀 [API Request] Cancelling ride: $rideId');
-    _socketService.leaveRide(rideId);
-    await _rideRepository.cancelRideWithReason(rideId, CancelRideRequest(reason: 'Changed my mind'));
 
+    // 1. Immediately stop polling timer to prevent race conditions & stale state overwrites
     stopActiveRidePolling();
+
+    // 2. Emit socket cancel event & leave socket room
+    _socketService.cancelRide(rideId, reason: reason);
+    _socketService.leaveRide(rideId);
+
+    // Invalidate cached ride history
+    _invalidateRideHistory();
+
+    // 3. Optimistically clear active ride state immediately so UI updates with 0ms delay
     state = state.copyWith(
       clearCurrentRide: true,
       clearDropLocation: true,
@@ -539,8 +770,18 @@ class RideNotifier extends StateNotifier<RideState> {
       clearLiveDriverLocation: true,
       fareEstimates: [],
       nearbyDrivers: [],
+      polylinePoints: [],
     );
-    return true;
+
+    // 4. Send cancellation request to backend
+    try {
+      final response = await _rideRepository.cancelRideWithReason(rideId, CancelRideRequest(reason: reason));
+      print('🚀 [API Call Result] cancelActiveRide success: ${response.isSuccess}');
+      return response.isSuccess;
+    } catch (e) {
+      print('❌ [API Call Error] Error cancelling ride: $e');
+      return false;
+    }
   }
 
   @override
@@ -551,6 +792,10 @@ class RideNotifier extends StateNotifier<RideState> {
     super.dispose();
   }
 
+  void clearCompletedRide() {
+    state = state.copyWith(clearCompletedRide: true);
+  }
+
   void resetRide() {
     state = const RideState();
   }
@@ -559,7 +804,7 @@ class RideNotifier extends StateNotifier<RideState> {
 final rideProvider = StateNotifierProvider<RideNotifier, RideState>((ref) {
   final repository = ref.watch(rideRepositoryProvider);
   final socketService = ref.watch(socketServiceProvider);
-  return RideNotifier(repository, socketService);
+  return RideNotifier(repository, socketService, ref);
 });
 
 final recentPlacesProvider = FutureProvider<List<RecentPlaceModel>>((ref) async {

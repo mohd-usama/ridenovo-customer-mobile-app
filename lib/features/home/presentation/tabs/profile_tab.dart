@@ -8,6 +8,12 @@ import '../../../auth/presentation/profile_details_screen.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../providers/ride_provider.dart';
 import '../saved_places_screen.dart';
+import '../spending_summary_screen.dart';
+import '../favorite_drivers_screen.dart';
+import '../referral_screen.dart';
+import '../support/help_support_screen.dart';
+import '../privacy_policy_screen.dart';
+import '../payment_methods_screen.dart';
 
 class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
@@ -132,18 +138,36 @@ class ProfileTab extends ConsumerWidget {
                       ),
                       _ProfileMenuItem(
                         icon: Icons.help_outline,
-                        title: 'Help',
-                        onTap: () => AppSnackBar.showSuccess(context, title: 'Help', message: 'Opening Help & Support'),
+                        title: 'Help & Support',
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HelpSupportScreen()));
+                        },
                       ),
                       _ProfileMenuItem(
                         icon: Icons.payment_outlined,
                         title: 'Payment',
-                        onTap: () => AppSnackBar.showSuccess(context, title: 'Payment', message: 'Opening Payment Methods'),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()));
+                        },
                       ),
                       _ProfileMenuItem(
                         icon: Icons.receipt_long_outlined,
                         title: 'My Rides',
                         onTap: () => AppSnackBar.showSuccess(context, title: 'My Rides', message: 'Opening My Rides'),
+                      ),
+                      _ProfileMenuItem(
+                        icon: Icons.analytics_outlined,
+                        title: 'Spending Summary',
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpendingSummaryScreen()));
+                        },
+                      ),
+                      _ProfileMenuItem(
+                        icon: Icons.star_outline_rounded,
+                        title: 'Favorite Captains',
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoriteDriversScreen()));
+                        },
                       ),
                       _ProfileMenuItem(
                         icon: Icons.security_outlined,
@@ -160,23 +184,23 @@ class ProfileTab extends ConsumerWidget {
                       _ProfileMenuItem(
                         icon: Icons.card_giftcard,
                         title: 'Refer and Earn',
-                        onTap: () => AppSnackBar.showSuccess(context, title: 'Refer & Earn', message: 'Opening Refer & Earn'),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReferralScreen()));
+                        },
                       ),
                       _ProfileMenuItem(
                         icon: Icons.notifications_none,
                         title: 'Notifications',
                         onTap: () => AppSnackBar.showSuccess(context, title: 'Notifications', message: 'Opening Notifications'),
                       ),
-                      _ProfileMenuItem(
-                        icon: Icons.settings_outlined,
-                        title: 'Settings',
-                        onTap: () => AppSnackBar.showSuccess(context, title: 'Settings', message: 'Opening Settings'),
-                      ),
+                      _ProfileMenuItem(icon: Icons.settings_outlined, title: 'Settings', onTap: () => _showSettingsModal(context, ref)),
                       _ProfileMenuItem(
                         icon: Icons.lock_outline,
                         title: 'Privacy',
                         isLast: true,
-                        onTap: () => AppSnackBar.showSuccess(context, title: 'Privacy', message: 'Opening Privacy policy'),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PrivacyPolicyScreen()));
+                        },
                       ),
                     ],
                   ),
@@ -233,10 +257,7 @@ class ProfileTab extends ConsumerWidget {
                         ref.read(rideProvider.notifier).resetRide();
                         await ref.read(authProvider.notifier).logout();
                         if (context.mounted) {
-                          Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                            (route) => false,
-                          );
+                          Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
                         }
                       }
                     },
@@ -249,6 +270,116 @@ class ProfileTab extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _showSettingsModal(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Settings',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            ),
+            const Gap(16),
+            // Push Notifications option commented out for now
+            /*
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.notifications_outlined, color: AppColors.textPrimary),
+              title: const Text('Push Notifications', style: TextStyle(fontWeight: FontWeight.w600)),
+              trailing: Switch(value: true, activeTrackColor: AppColors.primary, onChanged: (val) {}),
+            ),
+            const Divider(),
+            */
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.delete_forever_outlined, color: AppColors.error),
+              title: const Text(
+                'Delete Account',
+                style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold),
+              ),
+              subtitle: const Text(
+                'Permanently delete your account and personal data',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+              onTap: () {
+                Navigator.pop(context); // close modal
+                _confirmAndDeleteAccount(context, ref);
+              },
+            ),
+            const Gap(20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmAndDeleteAccount(BuildContext context, WidgetRef ref) async {
+    final reasonController = TextEditingController();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Delete Account',
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Are you sure you want to permanently delete your account? All your personal data, saved places, and active sessions will be purged.',
+            ),
+            const Gap(12),
+            TextField(
+              controller: reasonController,
+              decoration: InputDecoration(
+                hintText: 'Reason for leaving (optional)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
+
+    if (!context.mounted) return;
+    if (confirm == true) {
+      AppSnackBar.showSuccess(context, title: 'Processing', message: 'Requesting account deletion...');
+      final success = await ref.read(authProvider.notifier).deleteAccount(reason: reasonController.text.trim());
+      if (!context.mounted) return;
+      if (success) {
+        AppSnackBar.showSuccess(context, title: 'Account Deleted', message: 'Your account has been deleted permanently.');
+        if (!context.mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
+      } else {
+        final errorMsg = ref.read(authProvider).errorMessage ?? 'Failed to delete account. Please ensure no active rides are running.';
+        AppSnackBar.showError(context, title: 'Deletion Failed', message: errorMsg);
+      }
+    }
   }
 }
 

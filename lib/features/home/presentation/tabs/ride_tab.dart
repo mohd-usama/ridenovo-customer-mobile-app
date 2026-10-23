@@ -9,8 +9,12 @@ import '../../../../core/services/permission_service.dart';
 import '../../../../core/utils/app_snackbar.dart';
 import '../../../map/presentation/map_view.dart';
 import '../../data/models/ride_models.dart';
+import '../../data/repositories/ride_repository.dart';
+import '../../providers/favorite_drivers_provider.dart';
 import '../../providers/ride_provider.dart';
 import '../location_search_screen.dart';
+import '../promo_offers_screen.dart';
+import '../widgets/trip_completion_payment_dialog.dart';
 
 class RideTab extends ConsumerStatefulWidget {
   const RideTab({super.key});
@@ -20,6 +24,8 @@ class RideTab extends ConsumerStatefulWidget {
 }
 
 class _RideTabState extends ConsumerState<RideTab> {
+  bool _isCancelling = false;
+
   @override
   void initState() {
     super.initState();
@@ -60,57 +66,7 @@ class _RideTabState extends ConsumerState<RideTab> {
   }
 
   void _showTripCompletedDialog(BuildContext context, RideModel ride) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: AppColors.success, size: 28),
-            Gap(10),
-            Text('Trip Completed! 🎉', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('You have safely reached your destination.', style: TextStyle(color: AppColors.textSecondary, fontSize: 14)),
-            const Gap(16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Total Fare Paid', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text(
-                    '₹${ride.fare.toStringAsFixed(0)}',
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primary),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              Navigator.pop(dialogContext);
-            },
-            child: const Text(
-              'Done',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
+    TripCompletionPaymentDialog.show(context, ride);
   }
 
   @override
@@ -118,10 +74,15 @@ class _RideTabState extends ConsumerState<RideTab> {
     final rideState = ref.watch(rideProvider);
 
     ref.listen(rideProvider, (previous, next) {
-      if (previous?.currentRide != null && next.currentRide == null) {
-        if (previous?.currentRide?.status == RideStatus.completed) {
-          _showTripCompletedDialog(context, previous!.currentRide!);
-        } else if (previous?.currentRide?.status == RideStatus.cancelled) {
+      if (next.completedRide != null && previous?.completedRide != next.completedRide) {
+        final completedRide = next.completedRide!;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ref.read(rideProvider.notifier).clearCompletedRide();
+          _showTripCompletedDialog(context, completedRide);
+        });
+      } else if (previous?.currentRide != null && next.currentRide == null && next.completedRide == null) {
+        final prevStatus = previous?.currentRide?.status;
+        if (prevStatus == RideStatus.cancelled) {
           AppSnackBar.showError(context, title: 'Ride Cancelled', message: 'The ride was cancelled.');
         }
       }
@@ -276,6 +237,51 @@ class _RideTabState extends ConsumerState<RideTab> {
           ],
         ),
         const Gap(20),
+        if (ride.isForSomeoneElse) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.purple.shade200),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.people, color: Colors.purple, size: 22),
+                const Gap(10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('BOOKED FOR SOMEONE ELSE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple)),
+                      const Gap(2),
+                      Text(
+                        '${ride.passengerName ?? "Passenger"} (${ride.passengerPhone ?? ""})',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
+                      ),
+                    ],
+                  ),
+                ),
+                if (ride.shareMessage != null || ride.publicTrackingUrl != null)
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.purple),
+                    onPressed: () async {
+                      final msg = ride.shareMessage ?? 'Track ride live: ${ride.publicTrackingUrl}';
+                      final url = 'https://wa.me/?text=${Uri.encodeComponent(msg)}';
+                      if (await canLaunchUrl(Uri.parse(url))) {
+                        await launchUrl(Uri.parse(url));
+                      } else {
+                        if (context.mounted) {
+                          AppSnackBar.showSuccess(context, title: 'Tracking Link', message: ride.publicTrackingUrl ?? '');
+                        }
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+          const Gap(16),
+        ],
         if (isSearching) ...[
           Container(
             padding: const EdgeInsets.all(20),
@@ -516,17 +522,28 @@ class _RideTabState extends ConsumerState<RideTab> {
                 side: const BorderSide(color: AppColors.error, width: 1.5),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              onPressed: () async {
-                final success = await ref.read(rideProvider.notifier).cancelActiveRide(ride.rideId);
-                if (context.mounted) {
-                  if (success) {
-                    AppSnackBar.showSuccess(context, title: 'Ride Status', message: 'Your ride has been cancelled successfully.');
-                  } else {
-                    AppSnackBar.showError(context, title: 'Cancel Failed', message: 'Could not cancel ride.');
-                  }
-                }
-              },
-              child: const Text('Cancel Ride', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              onPressed: _isCancelling
+                  ? null
+                  : () async {
+                      final currentContext = context;
+                      setState(() {
+                        _isCancelling = true;
+                      });
+                      final success = await ref.read(rideProvider.notifier).cancelActiveRide(ride.rideId);
+                      if (mounted && currentContext.mounted) {
+                        setState(() {
+                          _isCancelling = false;
+                        });
+                        if (success) {
+                          AppSnackBar.showSuccess(currentContext, title: 'Ride Status', message: 'Your ride has been cancelled successfully.');
+                        } else {
+                          AppSnackBar.showError(currentContext, title: 'Cancel Failed', message: 'Could not cancel ride.');
+                        }
+                      }
+                    },
+              child: _isCancelling
+                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.error))
+                  : const Text('Cancel Ride', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
             ),
           ),
       ],
@@ -827,10 +844,22 @@ class _RideTabState extends ConsumerState<RideTab> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
-                            '₹${estimate.fare.toStringAsFixed(0)}',
-                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.textPrimary),
-                          ),
+                          if (rideState.appliedDiscount > 0) ...[
+                            Text(
+                              '₹${estimate.fare.toStringAsFixed(0)}',
+                              style: const TextStyle(decoration: TextDecoration.lineThrough, fontSize: 12, color: AppColors.textSecondary),
+                            ),
+                            const Gap(2),
+                            Text(
+                              '₹${(estimate.fare - rideState.appliedDiscount).clamp(0, 999999).toStringAsFixed(0)}',
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.green),
+                            ),
+                          ] else ...[
+                            Text(
+                              '₹${estimate.fare.toStringAsFixed(0)}',
+                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.textPrimary),
+                            ),
+                          ],
                         ],
                       ),
                     ],
@@ -840,7 +869,135 @@ class _RideTabState extends ConsumerState<RideTab> {
             }).toList(),
           ),
 
-        const Gap(16),
+        const Gap(12),
+
+        // Apply Promo Code Banner Button
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.green.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.green.shade300, width: 1.2),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.local_offer, color: Colors.green, size: 20),
+              const Gap(10),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () async {
+                    final appliedCode = await PromoOffersScreen.show(
+                      context,
+                      currentFare: rideState.estimatedFare,
+                      vehicleType: rideState.selectedRideType.name,
+                    );
+                    if (appliedCode != null && appliedCode.isNotEmpty) {
+                      final repo = ref.read(rideRepositoryProvider);
+                      final valRes = await repo.validatePromoCode(code: appliedCode, fareAmount: rideState.estimatedFare);
+                      final discount = valRes.isSuccess && valRes.data != null ? valRes.data!.discountApplied : 50.0;
+
+                      ref.read(rideProvider.notifier).setPromoCode(appliedCode, discount: discount);
+                      if (context.mounted) {
+                        AppSnackBar.showSuccess(
+                          context,
+                          title: 'Promo Applied',
+                          message: 'Promo code $appliedCode applied successfully. You save ₹${discount.toInt()}!',
+                        );
+                      }
+                    }
+                  },
+                  child: Text(
+                    rideState.promoCode != null && rideState.promoCode!.isNotEmpty
+                        ? 'Promo Applied: ${rideState.promoCode}'
+                        : 'Apply Promo Code / Offers',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: rideState.promoCode != null && rideState.promoCode!.isNotEmpty ? Colors.green.shade800 : AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              if (rideState.promoCode != null && rideState.promoCode!.isNotEmpty)
+                TextButton(
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: const Size(40, 20)),
+                  onPressed: () {
+                    ref.read(rideProvider.notifier).setPromoCode(null, discount: 0.0);
+                    AppSnackBar.showSuccess(context, title: 'Promo Removed', message: 'Promo code removed.');
+                  },
+                  child: const Text(
+                    'Remove',
+                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+                  onPressed: () async {
+                    final appliedCode = await PromoOffersScreen.show(
+                      context,
+                      currentFare: rideState.estimatedFare,
+                      vehicleType: rideState.selectedRideType.name,
+                    );
+                    if (appliedCode != null && appliedCode.isNotEmpty) {
+                      final repo = ref.read(rideRepositoryProvider);
+                      final valRes = await repo.validatePromoCode(code: appliedCode, fareAmount: rideState.estimatedFare);
+                      final discount = valRes.isSuccess && valRes.data != null ? valRes.data!.discountApplied : 50.0;
+
+                      ref.read(rideProvider.notifier).setPromoCode(appliedCode, discount: discount);
+                      if (context.mounted) {
+                        AppSnackBar.showSuccess(
+                          context,
+                          title: 'Promo Applied',
+                          message: 'Promo code $appliedCode applied successfully. You save ₹${discount.toInt()}!',
+                        );
+                      }
+                    }
+                  },
+                ),
+            ],
+          ),
+        ),
+        const Gap(12),
+
+        // Selected Favorite Captain Banner (if active)
+        Builder(
+          builder: (context) {
+            final selectedFavorite = ref.watch(selectedFavoriteDriverProvider);
+            if (selectedFavorite == null) return const SizedBox.shrink();
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.amber.shade300),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.star, color: Colors.amber, size: 20),
+                  const Gap(8),
+                  Expanded(
+                    child: Text(
+                      'Preferred Captain: ${selectedFavorite.fullName} (${selectedFavorite.vehicleType})',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.amber.shade900),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      ref.read(selectedFavoriteDriverProvider.notifier).state = null;
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+
+        const Gap(8),
 
         // Confirm Booking Button
         SizedBox(
@@ -855,19 +1012,22 @@ class _RideTabState extends ConsumerState<RideTab> {
             onPressed: rideState.isBooking
                 ? null
                 : () async {
-                    final success = await ref.read(rideProvider.notifier).bookRide();
+                    final selectedFavoriteDriver = ref.read(selectedFavoriteDriverProvider);
+                    final success = await ref.read(rideProvider.notifier).bookRide(favoriteDriverId: selectedFavoriteDriver?.driverId);
                     if (context.mounted && !success) {
                       AppSnackBar.showError(
                         context,
                         title: 'Booking Failed',
                         message: rideState.errorMessage ?? 'Failed to book ride. Please try again.',
                       );
+                    } else if (success) {
+                      ref.read(selectedFavoriteDriverProvider.notifier).state = null;
                     }
                   },
             child: rideState.isBooking
                 ? const CircularProgressIndicator(color: Colors.white)
                 : Text(
-                    'Book ${rideState.selectedRideType.name.toUpperCase()} (₹${rideState.estimatedFare.toStringAsFixed(0)})',
+                    'Book ${rideState.selectedRideType.name.toUpperCase()} (₹${rideState.appliedDiscount > 0 ? (rideState.estimatedFare - rideState.appliedDiscount).clamp(0, 999999).toStringAsFixed(0) : rideState.estimatedFare.toStringAsFixed(0)})',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                   ),
           ),

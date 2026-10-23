@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../providers/ride_provider.dart';
 import 'tabs/all_services_tab.dart';
 import 'tabs/my_rides_tab.dart';
 import 'tabs/profile_tab.dart';
@@ -40,6 +41,11 @@ class _MainDashboardScreenState extends ConsumerState<MainDashboardScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
+            if (index == 2) {
+              ref.invalidate(rideHistoryProvider('complete'));
+              ref.invalidate(rideHistoryProvider('cancel'));
+              ref.invalidate(rideHistoryProvider('all'));
+            }
             setState(() {
               _currentIndex = index;
             });

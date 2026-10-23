@@ -24,6 +24,7 @@ class ApiEndpoints {
   static const String profile = '/api/users/me';
   static const String updateProfile = '/api/users/me';
   static const String updateFcmToken = '/api/users/me/fcm-token';
+  static const String deleteAccount = '/api/rider/account';
 
   // Saved Addresses Endpoints
   static const String addresses = '/api/rider/addresses';
@@ -50,10 +51,43 @@ class ApiEndpoints {
   static String riderVerifyPlate(String rideId) => '/api/rider/rides/$rideId/plate-verify';
   static String riderGetOtp(String rideId) => '/api/rider/rides/$rideId/otp';
 
-  // 6. Cancellation Endpoints
+  // 6. Cancellation & History Endpoints
   static String riderCancelPreview(String rideId) => '/api/rider/rides/$rideId/cancel-preview';
   static String riderCancelRide(String rideId) => '/api/rider/rides/$rideId/cancel';
   static const String riderRidesHistory = '/api/rider/rides';
+
+  // 7. Spending Summary Endpoint
+  static const String riderSpendingSummary = '/api/rider/spending-summary';
+
+  // 8. Favorite Drivers & Rating Endpoints
+  static const String riderFavoriteDrivers = '/api/rider/drivers/favorites';
+  static String riderFavoriteDriver(String driverId) => '/api/rider/drivers/$driverId/favorite';
+  static String riderDriverAvailability(String driverId) => '/api/rider/drivers/$driverId/availability';
+  static String riderRateRide(String rideId) => '/api/rider/rides/$rideId/rate';
+
+  // 9. Customer Referral Program Endpoints
+  static const String riderReferral = '/api/rider/referral';
+  static const String riderReferralApply = '/api/rider/referral/apply';
+  static const String riderReferralValidate = '/api/rider/referral/validate';
+
+  // 10. Help, Support & AI Chat Endpoints
+  static const String riderSupportCategories = '/api/rider/support/categories';
+  static const String riderSupportTickets = '/api/rider/support/tickets';
+  static String riderSupportTicketDetail(String id) => '/api/rider/support/tickets/$id';
+  static String riderSupportTicketReply(String id) => '/api/rider/support/tickets/$id/reply';
+  static const String riderSupportAiChat = '/api/rider/support/ai-chat';
+
+  // 11. Promos & Offers Endpoints
+  static const String riderPromosCatalog = '/api/rider/promos';
+  static const String riderPromosValidate = '/api/rider/promos/validate';
+
+  // 12. Razorpay Payment Endpoints
+  static const String razorpayCreateOrder = '/api/rider/payment/razorpay/create-order';
+  static const String razorpayVerify = '/api/rider/payment/razorpay/verify';
+
+  // 13. Saved Passengers Endpoints
+  static const String riderPassengers = '/api/rider/passengers';
+  static String riderPassengerDetail(String id) => '/api/rider/passengers/$id';
 
   // Recent Places Endpoints
   static const String recentPlaces = '/api/places/recent';

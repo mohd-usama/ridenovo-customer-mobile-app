@@ -18,6 +18,7 @@ abstract class AuthRepository {
   Future<ApiResponse<UserModel>> getUserProfile();
   Future<ApiResponse<UserModel>> updateProfile(Map<String, dynamic> body);
   Future<ApiResponse<bool>> updateFcmToken(String fcmToken);
+  Future<ApiResponse<bool>> deleteAccount({String? reason});
   Future<void> logout();
   Future<String?> getSavedToken();
   Future<void> saveToken(String token);
@@ -115,6 +116,25 @@ class AuthRepositoryImpl implements AuthRepository {
       data: {'fcmToken': fcmToken},
       fromJson: (json) => json['success'] ?? true,
     );
+    return response;
+  }
+
+  @override
+  Future<ApiResponse<bool>> deleteAccount({String? reason}) async {
+    final response = await apiService.delete<bool>(
+      ApiEndpoints.deleteAccount,
+      data: reason != null && reason.isNotEmpty ? {'reason': reason} : null,
+      fromJson: (json) {
+        if (json is Map<String, dynamic>) {
+          return json['success'] ?? true;
+        }
+        return true;
+      },
+    );
+    if (response.isSuccess) {
+      await _secureStorage.delete(key: _tokenKey);
+      await _secureStorage.delete(key: _isNewUserKey);
+    }
     return response;
   }
 

@@ -7,6 +7,7 @@ import '../../../core/utils/app_snackbar.dart';
 import '../data/models/ride_models.dart';
 import '../data/repositories/ride_repository.dart';
 import '../providers/ride_provider.dart';
+import 'widgets/book_for_someone_else_sheet.dart';
 
 class LocationSearchScreen extends ConsumerStatefulWidget {
   const LocationSearchScreen({super.key});
@@ -105,6 +106,10 @@ class _LocationSearchScreenState extends ConsumerState<LocationSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final rideState = ref.watch(rideProvider);
+    final isForSomeoneElse = rideState.isBookingForSomeoneElse;
+    final passengerLabel = isForSomeoneElse ? (rideState.passengerName ?? 'Someone else') : 'For me';
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -116,23 +121,36 @@ class _LocationSearchScreenState extends ConsumerState<LocationSearchScreen> {
         ),
         actions: [
           // "For me" booking dropdown
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              children: const [
-                Text(
-                  'For me',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
-                ),
-                Gap(4),
-                Icon(Icons.keyboard_arrow_down, size: 18, color: AppColors.textPrimary),
-              ],
+          GestureDetector(
+            onTap: () {
+              BookForSomeoneElseSheet.show(context);
+            },
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: isForSomeoneElse ? AppColors.primary : Colors.grey.shade300, width: isForSomeoneElse ? 1.5 : 1),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isForSomeoneElse ? Icons.people : Icons.person,
+                    size: 16,
+                    color: AppColors.primary,
+                  ),
+                  const Gap(6),
+                  Text(
+                    passengerLabel,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Gap(4),
+                  const Icon(Icons.keyboard_arrow_down, size: 18, color: AppColors.textPrimary),
+                ],
+              ),
             ),
           ),
         ],

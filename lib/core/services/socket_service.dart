@@ -90,15 +90,24 @@ class SocketService {
         }
       });
 
-      // 2. Ride Status Transition Stream (`ride:status_changed`)
-      _socket!.on('ride:status_changed', (data) {
+      // 2. Ride Status Transition Stream
+      void handleStatusEvent(dynamic data) {
         print('🔄 [Socket] Ride Status Changed: $data');
         if (data is Map<String, dynamic>) {
           _rideStatusController.add(data);
         } else if (data is Map) {
           _rideStatusController.add(Map<String, dynamic>.from(data));
         }
-      });
+      }
+      _socket!.on('ride:status_changed', handleStatusEvent);
+      _socket!.on('ride.status_changed', handleStatusEvent);
+      _socket!.on('ride_status_updated', handleStatusEvent);
+      _socket!.on('ride_status_change', handleStatusEvent);
+      _socket!.on('ride_status', handleStatusEvent);
+      _socket!.on('ride:completed', handleStatusEvent);
+      _socket!.on('ride_completed', handleStatusEvent);
+      _socket!.on('ride:updated', handleStatusEvent);
+      _socket!.on('ride_updated', handleStatusEvent);
 
       _socket!.connect();
     } catch (e) {
@@ -134,6 +143,14 @@ class SocketService {
     if (_currentJoinedRideId == rideId) {
       _currentJoinedRideId = null;
     }
+  }
+
+  /// Emit cancel ride event to socket server
+  void cancelRide(String rideId, {String? reason}) {
+    if (rideId.isEmpty) return;
+    print('🚀 [Socket Emit] Emitting cancel_ride for rideId: $rideId');
+    _socket?.emit('cancel_ride', {'rideId': rideId, 'reason': reason ?? 'Rider cancelled'});
+    _socket?.emit('rider:cancel_ride', {'rideId': rideId, 'reason': reason ?? 'Rider cancelled'});
   }
 
   /// Disconnect socket client completely

@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/app_snackbar.dart';
+import '../spending_summary_screen.dart';
+import '../favorite_drivers_screen.dart';
+import '../referral_screen.dart';
+import '../support/help_support_screen.dart';
 
 class AllServicesTab extends ConsumerWidget {
   const AllServicesTab({super.key});
@@ -76,47 +80,56 @@ class AllServicesTab extends ConsumerWidget {
                 ),
               ],
             ),
+
             const Gap(28),
             const Text(
-              'Package & Delivery',
+              'Preferred Captains',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
             ),
             const Gap(12),
             _ServiceBannerCard(
-              title: 'Package Delivery',
-              subtitle: 'Send parcels, documents & food anywhere in the city instantly',
-              icon: Icons.inventory_2_outlined,
-              badge: 'Fast Delivery',
-              onTap: () => AppSnackBar.showSuccess(context, title: 'Delivery', message: 'Opening Package Delivery'),
+              title: 'Favorite Captains',
+              subtitle: 'View live availability & request rides directly from your favorite drivers',
+              icon: Icons.star_rounded,
+              badge: 'Direct Booking',
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoriteDriversScreen()));
+              },
             ),
             const Gap(28),
             const Text(
-              'Outstation & Rentals',
+              'Rewards & Offers',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
             ),
             const Gap(12),
-            Row(
-              children: [
-                Expanded(
-                  child: _ServiceItemCard(
-                    title: 'Intercity',
-                    subtitle: 'Outstation cabs',
-                    icon: Icons.location_city,
-                    color: Colors.teal,
-                    onTap: () => AppSnackBar.showSuccess(context, title: 'Intercity', message: 'Opening Intercity rides'),
-                  ),
-                ),
-                const Gap(16),
-                Expanded(
-                  child: _ServiceItemCard(
-                    title: 'Hourly Rentals',
-                    subtitle: 'Cabs with driver',
-                    icon: Icons.access_time,
-                    color: Colors.indigo,
-                    onTap: () => AppSnackBar.showSuccess(context, title: 'Rentals', message: 'Opening Hourly Rentals'),
-                  ),
-                ),
-              ],
+            _ServiceBannerCard(
+              title: 'Refer & Earn ₹100',
+              subtitle: 'Invite friends to Ridonova! Your friend gets ₹50 off and you earn ₹100',
+              icon: Icons.card_giftcard,
+              badge: 'Earn Rewards',
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReferralScreen()));
+              },
+            ),
+            const Gap(12),
+            _ServiceBannerCard(
+              title: 'Spending Summary',
+              subtitle: 'Track monthly & yearly expenses, payment breakdown & savings',
+              icon: Icons.analytics_outlined,
+              badge: 'Insights',
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SpendingSummaryScreen()));
+              },
+            ),
+            const Gap(12),
+            _ServiceBannerCard(
+              title: '24/7 Support & Help',
+              subtitle: 'Report issues, view FAQs & chat with instant AI Assistant or live agent',
+              icon: Icons.headset_mic_outlined,
+              badge: 'Support 24/7',
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HelpSupportScreen()));
+              },
             ),
           ],
         ),
@@ -132,13 +145,7 @@ class _ServiceItemCard extends StatelessWidget {
   final Color color;
   final VoidCallback onTap;
 
-  const _ServiceItemCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
+  const _ServiceItemCard({required this.title, required this.subtitle, required this.icon, required this.color, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -150,23 +157,14 @@ class _ServiceItemCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 3))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: color, size: 28),
             ),
             const Gap(14),
@@ -175,10 +173,7 @@ class _ServiceItemCard extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppColors.textPrimary),
             ),
             const Gap(4),
-            Text(
-              subtitle,
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
+            Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ],
         ),
       ),
@@ -193,13 +188,7 @@ class _ServiceBannerCard extends StatelessWidget {
   final String badge;
   final VoidCallback onTap;
 
-  const _ServiceBannerCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-    required this.badge,
-    required this.onTap,
-  });
+  const _ServiceBannerCard({required this.title, required this.subtitle, required this.icon, required this.badge, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -208,19 +197,9 @@ class _ServiceBannerCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppColors.secondary, Color(0xFF1B498F)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: const LinearGradient(colors: [AppColors.secondary, Color(0xFF1B498F)], begin: Alignment.topLeft, end: Alignment.bottomRight),
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.secondary.withValues(alpha: 0.2),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: AppColors.secondary.withValues(alpha: 0.2), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Row(
           children: [
@@ -230,10 +209,7 @@ class _ServiceBannerCard extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(8)),
                     child: Text(
                       badge,
                       style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
@@ -245,20 +221,14 @@ class _ServiceBannerCard extends StatelessWidget {
                     style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const Gap(4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
+                  Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 ],
               ),
             ),
             const Gap(12),
             Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle),
               child: Icon(icon, color: Colors.white, size: 36),
             ),
           ],

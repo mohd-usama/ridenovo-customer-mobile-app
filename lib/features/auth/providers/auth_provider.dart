@@ -191,6 +191,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     await _authRepository.logout();
     state = const AuthState();
   }
+
+  /// Permanently delete account
+  Future<bool> deleteAccount({String? reason}) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    final response = await _authRepository.deleteAccount(reason: reason);
+    if (response.isSuccess) {
+      state = const AuthState();
+      return true;
+    } else {
+      state = state.copyWith(isLoading: false, errorMessage: response.message ?? 'Failed to delete account');
+      return false;
+    }
+  }
 }
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
